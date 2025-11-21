@@ -18,10 +18,11 @@ Root Directory:
   (leave EMPTY)
 
 Build Command:
-  NODE_ENV=development npm install && npm run build
+  NODE_ENV=development npm install && npx puppeteer browsers install chrome && npm run build
   
   ⚠️ CRITICAL: Update this in Render Dashboard Settings!
   The NODE_ENV=development ensures devDependencies (vite, esbuild) are installed.
+  The puppeteer browsers install chrome command installs Chrome for PDF generation.
 
 Start Command:
   npm start
@@ -63,6 +64,9 @@ Required Variables:
 
 Optional:
 13. SENTRY_DSN = (your sentry DSN if using)
+
+14. PUPPETEER_CACHE_DIR = /opt/render/.cache/puppeteer
+   (This helps Puppeteer find Chrome in Render environment)
 
 ══════════════════════════════════════════════════════════════
    AFTER DEPLOYMENT
