@@ -1,5 +1,11 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "npm install --include=optional"
+  "installCommand": "npm install --include=optional",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
 }
 
