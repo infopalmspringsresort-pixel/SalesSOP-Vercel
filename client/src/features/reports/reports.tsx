@@ -404,15 +404,20 @@ export default function Reports() {
   };
 
   const renderBookingReport = () => {
-    if (bookingLoading || bookingsLoading) {
+    if (bookingsLoading || bookingLoading) {
       return <div className="flex items-center justify-center h-64">Loading report...</div>;
     }
 
-    if (!bookingReport) {
-      return <div className="text-center text-gray-500 mt-8">No data available for selected filters</div>;
-    }
+    // Get data from API report
+    const reportData = bookingReport as any;
+    const apiTotalBookings = reportData?.totalBookings || 0;
+    const apiTotalRevenue = reportData?.totalRevenue || 0;
+    const apiAvgBookingValue = reportData?.avgBookingValue || 0;
+    const apiAvgDuration = reportData?.avgDuration || 0;
+    const apiStatusBreakdown = reportData?.statusBreakdown || {};
+    const apiEventTypeBreakdown = reportData?.eventTypeBreakdown || {};
 
-    // Filter bookings based on selected filters
+    // Filter bookings based on selected filters (for client-side filtering)
     const filteredBookings = (allBookings || []).filter((booking: any) => {
       if (cityFilter !== "all" && booking.enquiry?.city !== cityFilter) return false;
       if (sourceFilter !== "all" && booking.enquiry?.source !== sourceFilter) return false;
@@ -420,19 +425,28 @@ export default function Reports() {
       return true;
     });
 
-    // Calculate metrics from filtered bookings
-    const totalBookings = filteredBookings.length;
-    const totalRevenue = filteredBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-    const avgBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
-    const avgDuration = filteredBookings.reduce((sum, b) => sum + (b.eventDuration || 1), 0) / (totalBookings || 1);
+    // Calculate metrics from filtered bookings (when client-side filters are applied)
+    const filteredTotalBookings = filteredBookings.length;
+    const filteredTotalRevenue = filteredBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+    const filteredAvgBookingValue = filteredTotalBookings > 0 ? filteredTotalRevenue / filteredTotalBookings : 0;
+    const filteredAvgDuration = filteredBookings.reduce((sum, b) => sum + (b.eventDuration || 1), 0) / (filteredTotalBookings || 1);
     
-    const statusBreakdown: any = {};
-    const eventTypeBreakdown: any = {};
+    const filteredStatusBreakdown: any = {};
+    const filteredEventTypeBreakdown: any = {};
     
     filteredBookings.forEach((booking: any) => {
-      statusBreakdown[booking.status] = (statusBreakdown[booking.status] || 0) + 1;
-      eventTypeBreakdown[booking.eventType] = (eventTypeBreakdown[booking.eventType] || 0) + 1;
+      filteredStatusBreakdown[booking.status] = (filteredStatusBreakdown[booking.status] || 0) + 1;
+      filteredEventTypeBreakdown[booking.eventType] = (filteredEventTypeBreakdown[booking.eventType] || 0) + 1;
     });
+
+    // Use API data if no client-side filters, otherwise use filtered data
+    const hasClientFilters = cityFilter !== "all" || sourceFilter !== "all" || eventTypeFilter !== "all";
+    const finalTotalBookings = hasClientFilters ? filteredTotalBookings : apiTotalBookings;
+    const finalTotalRevenue = hasClientFilters ? filteredTotalRevenue : apiTotalRevenue;
+    const finalAvgBookingValue = hasClientFilters ? filteredAvgBookingValue : apiAvgBookingValue;
+    const finalAvgDuration = hasClientFilters ? filteredAvgDuration : apiAvgDuration;
+    const finalStatusBreakdown = hasClientFilters ? filteredStatusBreakdown : apiStatusBreakdown;
+    const finalEventTypeBreakdown = hasClientFilters ? filteredEventTypeBreakdown : apiEventTypeBreakdown;
 
     try {
       return (
@@ -445,7 +459,25 @@ export default function Reports() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalBookings}</div>
+              <div className="text-2xl font-bold">{finalTotalBookings}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <IndianRupee className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(finalTotalRevenue)}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Booking Value</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(finalAvgBookingValue)}</div>
             </CardContent>
           </Card>
           <Card>
@@ -454,7 +486,7 @@ export default function Reports() {
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{avgDuration.toFixed(1)} days</div>
+              <div className="text-2xl font-bold">{finalAvgDuration.toFixed(1)} days</div>
             </CardContent>
           </Card>
         </div>
@@ -468,11 +500,19 @@ export default function Reports() {
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{totalBookings}</div>
+                  <div className="text-2xl font-bold text-blue-600">{finalTotalBookings}</div>
                   <div className="text-sm text-gray-600">Total Bookings</div>
                 </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{formatCurrency(finalTotalRevenue)}</div>
+                  <div className="text-sm text-gray-600">Total Revenue</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">{formatCurrency(finalAvgBookingValue)}</div>
+                  <div className="text-sm text-gray-600">Avg Booking Value</div>
+                </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">{avgDuration.toFixed(1)}</div>
+                  <div className="text-2xl font-bold text-orange-600">{finalAvgDuration.toFixed(1)}</div>
                   <div className="text-sm text-gray-600">Avg Duration (days)</div>
                 </div>
               </div>
@@ -480,15 +520,34 @@ export default function Reports() {
           </Card>
         </div>
 
+        {/* Status Breakdown */}
+        {Object.keys(finalStatusBreakdown).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {Object.entries(finalStatusBreakdown).map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between">
+                    <Badge className={getStatusColor(status)}>{status.toUpperCase()}</Badge>
+                    <Badge variant="outline">{count as number}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Event Type Breakdown */}
-        {Object.keys(eventTypeBreakdown).length > 0 && (
+        {Object.keys(finalEventTypeBreakdown).length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Event Type Breakdown</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {Object.entries(eventTypeBreakdown).map(([eventType, count]) => (
+                {Object.entries(finalEventTypeBreakdown).map(([eventType, count]) => (
                   <div key={eventType} className="flex items-center justify-between">
                     <span className="text-sm font-medium capitalize">{eventType.replace('_', ' ')}</span>
                     <Badge variant="outline">{count as number}</Badge>
