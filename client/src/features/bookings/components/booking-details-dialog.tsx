@@ -54,12 +54,6 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
   const [isNewSession, setIsNewSession] = useState(false);
   const isEditingRef = useRef(false);
 
-  // Fetch booking audit log
-  const { data: auditLog = [] } = useQuery<any[]>({
-    queryKey: [`/api/bookings/${booking?.id}/audit-log`],
-    enabled: !!booking && open,
-  });
-
   // Load sessions when booking data changes
   useEffect(() => {
     if (isEditingRef.current) {
@@ -236,6 +230,16 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
   });
 
   const handleStatusUpdate = () => {
+    // Prevent status updates if booking is already closed or cancelled
+    if (booking?.status === 'closed' || booking?.status === 'cancelled') {
+      toast({
+        title: "Error",
+        description: `Cannot update status: Booking is already ${booking.status}. ${booking.status === 'closed' ? 'Closed' : 'Cancelled'} bookings cannot have their status changed.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!newStatus) {
       toast({
         title: "Error",
@@ -314,15 +318,12 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
         </DialogHeader>
 
         <Tabs defaultValue="details" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-9 sm:h-10">
+          <TabsList className="grid w-full grid-cols-2 h-9 sm:h-10">
             <TabsTrigger value="details" data-testid="tab-booking-details" className="text-xs sm:text-sm">
               Booking Details
             </TabsTrigger>
             <TabsTrigger value="sessions" data-testid="tab-booking-sessions" className="text-xs sm:text-sm">
               Sessions
-            </TabsTrigger>
-            <TabsTrigger value="history" data-testid="tab-booking-history" className="text-xs sm:text-sm">
-              History
             </TabsTrigger>
           </TabsList>
 
@@ -330,7 +331,11 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
             {/* Change Status Actions */}
             <div className="flex flex-col sm:flex-row justify-end gap-2">
               <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                {!booking.statusChanged ? (
+                {booking.status === 'closed' || booking.status === 'cancelled' ? (
+                  <Badge variant="secondary" className="px-3 py-1">
+                    Status: {booking.status === 'closed' ? 'Closed' : 'Cancelled'}
+                  </Badge>
+                ) : !booking.statusChanged ? (
                   <Button 
                     variant="outline"
                     className="flex items-center justify-center gap-2 w-full sm:w-auto" 
@@ -959,71 +964,6 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
                 </div>
               )}
             </div>
-          </TabsContent>
-          
-          <TabsContent value="history" className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Booking History</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                Complete timeline of status changes and modifications
-              </p>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Change Timeline</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {auditLog && auditLog.length > 0 ? (
-                  <div className="space-y-4">
-                    {auditLog.map((log: any, index: number) => (
-                      <div 
-                        key={log.id} 
-                        className="border-l-4 border-blue-200 pl-4 py-2 bg-gray-50 rounded-r-md"
-                        data-testid={`booking-audit-log-${index}`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge variant="outline" className="text-xs">
-                                {log.action}
-                              </Badge>
-                              {log.fromStatus && log.toStatus && (
-                                <span className="text-sm font-medium">
-                                  {getStatusLabel(log.fromStatus)} → {getStatusLabel(log.toStatus)}
-                                </span>
-                              )}
-                              {log.action === 'created' && (
-                                <span className="text-sm font-medium">
-                                  Initial Status: {getStatusLabel(log.toStatus)}
-                                </span>
-                              )}
-                            </div>
-                            {log.cancellationReason && (
-                              <p className="text-sm text-gray-700 mb-1">
-                                <span className="font-medium">Cancellation Reason:</span> {log.cancellationReason}
-                              </p>
-                            )}
-                            {log.notes && (
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Notes:</span> {log.notes}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground whitespace-nowrap">
-                            {format(new Date(log.createdAt), "dd MMM yyyy, HH:mm")}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No history available for this booking.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -211,7 +211,9 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
           venue: session.venue,
           startTime: session.startTime,
           endTime: session.endTime,
-          sessionDate: session.sessionDate,
+          sessionDate: session.sessionDate instanceof Date 
+            ? session.sessionDate.toISOString() 
+            : (session.sessionDate ? new Date(session.sessionDate).toISOString() : session.sessionDate),
           paxCount: session.paxCount || 0,
           specialInstructions: session.specialInstructions || null,
         })),
@@ -925,7 +927,7 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
                   )}
                 />
 
-                <FormField
+                {/* <FormField
                   control={form.control}
                   name="numberOfRooms"
                   render={({ field }) => (
@@ -953,7 +955,7 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
                       <FormMessage />
                     </FormItem>
                   )}
-                />
+                /> */}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

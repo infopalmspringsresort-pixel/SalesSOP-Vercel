@@ -17,11 +17,11 @@ import {
   LogOut,
   Menu,
   Calendar,
-  Utensils,
-  Building,
+  // Utensils,
+  // Building,
   PanelLeftClose,
   PanelLeftOpen,
-  Calculator,
+  // Calculator,
 } from "lucide-react";
 
 const navigation = [
@@ -30,9 +30,9 @@ const navigation = [
   { name: "Bookings", href: "/bookings", icon: FileText },
   { name: "Calendar", href: "/calendar", icon: Calendar },
   { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Menu Management", href: "/menu-management", icon: Utensils, adminOnly: true },
-  { name: "Room Management", href: "/room-management", icon: Building, adminOnly: true },
-  { name: "Quotation Packages", href: "/quotation-package-management", icon: Calculator, adminOnly: true },
+  // { name: "Menu Management", href: "/menu-management", icon: Utensils, adminOnly: true },
+  // { name: "Room Management", href: "/room-management", icon: Building, adminOnly: true },
+  // { name: "Quotation Packages", href: "/quotation-package-management", icon: Calculator, adminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

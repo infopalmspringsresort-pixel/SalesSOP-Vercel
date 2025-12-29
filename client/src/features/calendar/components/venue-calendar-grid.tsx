@@ -556,11 +556,11 @@ export default function VenueCalendarGrid() {
                   </div>
                 ) : (
                   /* Desktop: Compact cards */
-                  <div className="space-y-0.5 flex-1 overflow-hidden flex flex-col">
+                  <div className="space-y-1 flex-1 overflow-hidden flex flex-col">
                     {isCurrentMonth && dayBookings.slice(0, 1).map(booking => (
                       <div
                         key={booking.id}
-                        className={`text-xs p-0.5 rounded border cursor-pointer hover:shadow-sm transition-all duration-200 flex-shrink-0 ${
+                        className={`p-1.5 rounded border cursor-pointer hover:shadow-sm transition-all duration-200 flex-shrink-0 ${
                           STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || 'bg-gray-100 text-gray-800'
                         }`}
                         title={`${booking.clientName} - ${booking.sessionName} at ${booking.venue} (${booking.startTime}-${booking.endTime})`}
@@ -569,15 +569,15 @@ export default function VenueCalendarGrid() {
                           handleViewAllClick(day, dayBookings);
                         }}
                       >
-                        <div className="font-medium truncate text-[8px] leading-tight">{booking.clientName}</div>
-                        <div className="text-[8px] opacity-75 truncate leading-tight">{booking.sessionName}</div>
-                        <div className="flex items-center gap-0.5 mt-0.5">
-                          <MapPin className="w-1.5 h-1.5" />
-                          <span className="text-[8px] truncate">{booking.venue}</span>
+                        <div className="font-semibold truncate text-[11px] leading-tight mb-0.5">{booking.clientName}</div>
+                        <div className="text-[10px] opacity-90 truncate leading-tight mb-1">{booking.sessionName}</div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
+                          <span className="text-[10px] truncate font-medium">{booking.venue}</span>
                         </div>
-                        <div className="flex items-center gap-0.5">
-                          <Clock className="w-1.5 h-1.5" />
-                          <span className="text-[8px]">{booking.startTime}</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Clock className="w-2.5 h-2.5 flex-shrink-0" />
+                          <span className="text-[10px] font-medium">{booking.startTime}</span>
                         </div>
                       </div>
                     ))}
@@ -586,13 +586,13 @@ export default function VenueCalendarGrid() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full text-[8px] h-3 p-0 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 flex-shrink-0"
+                        className="w-full text-[10px] h-5 p-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 flex-shrink-0 font-medium"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleViewAllClick(day, dayBookings);
                         }}
                       >
-                        <Eye className="w-1.5 h-1.5 mr-0.5" />
+                        <Eye className="w-3 h-3 mr-1" />
                         +{dayBookings.length - 1}
                       </Button>
                     )}
@@ -706,37 +706,37 @@ export default function VenueCalendarGrid() {
       {/* View All Bookings Dialog */}
       <Dialog open={showAllBookings} onOpenChange={setShowAllBookings}>
         <DialogContent className={isMobile 
-          ? 'w-[95vw] max-w-none mx-2 my-2 max-h-[85vh] flex flex-col' 
-          : 'max-w-2xl max-h-[85vh] flex flex-col'
+          ? 'w-[90vw] max-w-sm mx-2 my-2 max-h-[75vh] flex flex-col p-4' 
+          : 'max-w-lg max-h-[75vh] flex flex-col p-4'
         }>
-          <DialogHeader className={isMobile ? 'pb-2' : 'pb-4'}>
-            <DialogTitle className={`flex items-center gap-2 ${isMobile ? 'text-base' : 'text-lg'}`}>
-              <Calendar className={isMobile ? 'w-4 h-4' : 'w-5 h-5'} />
-              <span className={isMobile ? 'text-sm' : ''}>
+          <DialogHeader className={isMobile ? 'pb-2 px-0' : 'pb-3 px-0'}>
+            <DialogTitle className={`flex items-center gap-2 ${isMobile ? 'text-sm' : 'text-base'}`}>
+              <Calendar className={isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+              <span className={isMobile ? 'text-xs' : 'text-sm'}>
                 {selectedDate && format(selectedDate, isMobile ? 'MMM d, yyyy' : 'EEEE, MMMM d, yyyy')}
               </span>
             </DialogTitle>
           </DialogHeader>
           
-          <div className={`flex-1 overflow-y-auto ${isMobile ? 'space-y-2 -mx-2 px-2' : 'space-y-3'}`}>
+          <div className={`flex-1 overflow-y-auto ${isMobile ? 'space-y-2' : 'space-y-2.5'}`}>
             {selectedDayBookings.length === 0 ? (
-              <div className={`text-center text-gray-500 ${isMobile ? 'py-8' : 'py-12'}`}>
-                <Calendar className={`mx-auto mb-3 text-gray-300 ${isMobile ? 'w-10 h-10' : 'w-12 h-12'}`} />
-                <p className={isMobile ? 'text-sm' : ''}>No bookings found for this day</p>
+              <div className={`text-center text-gray-500 ${isMobile ? 'py-6' : 'py-8'}`}>
+                <Calendar className={`mx-auto mb-2 text-gray-300 ${isMobile ? 'w-8 h-8' : 'w-10 h-10'}`} />
+                <p className={isMobile ? 'text-xs' : 'text-sm'}>No bookings found for this day</p>
               </div>
             ) : (
               selectedDayBookings.map((booking) => (
-                <Card key={booking.id} className={`border-l-4 border-l-blue-500 ${isMobile ? 'shadow-sm' : ''}`}>
-                  <CardContent className={isMobile ? 'p-3' : 'p-4'}>
-                    <div className="flex flex-col gap-3">
+                <Card key={booking.id} className={`border-l-4 border-l-blue-500 ${isMobile ? 'shadow-sm' : 'shadow-sm'}`}>
+                  <CardContent className={isMobile ? 'p-2.5' : 'p-3'}>
+                    <div className="flex flex-col gap-2">
                       {/* Header: Client Name and Status */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <h3 className={`font-semibold ${isMobile ? 'text-sm' : 'text-base'}`}>
+                        <h3 className={`font-semibold ${isMobile ? 'text-xs' : 'text-sm'}`}>
                           {booking.clientName}
                         </h3>
                         <Badge 
                           variant="outline" 
-                          className={`${isMobile ? 'text-[10px] px-1.5 py-0.5' : 'text-xs'} ${
+                          className={`${isMobile ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-0.5'} ${
                             STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || 'bg-gray-100 text-gray-800'
                           }`}
                         >
@@ -745,42 +745,42 @@ export default function VenueCalendarGrid() {
                       </div>
                       
                       {/* Booking Details */}
-                      <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-2 gap-3'} text-sm`}>
-                        <div className="space-y-1.5">
-                          <div className="flex items-start gap-2">
-                            <Calendar className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-500 mt-0.5 flex-shrink-0`} />
+                      <div className={`grid ${isMobile ? 'grid-cols-1 gap-1.5' : 'grid-cols-2 gap-2'}`}>
+                        <div className="space-y-1">
+                          <div className="flex items-start gap-1.5">
+                            <Calendar className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-gray-500 mt-0.5 flex-shrink-0`} />
                             <div className="flex-1 min-w-0">
-                              <span className={`font-medium ${isMobile ? 'text-xs' : 'text-sm'}`}>Session: </span>
-                              <span className={isMobile ? 'text-xs' : 'text-sm'}>{booking.sessionName}</span>
+                              <span className={`font-medium ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Session: </span>
+                              <span className={isMobile ? 'text-[10px]' : 'text-xs'}>{booking.sessionName}</span>
                               {booking.sessionLabel && (
-                                <span className={`text-gray-600 ${isMobile ? 'text-[10px]' : 'text-xs'}`}> ({booking.sessionLabel})</span>
+                                <span className={`text-gray-600 ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}> ({booking.sessionLabel})</span>
                               )}
                             </div>
                           </div>
                           
-                          <div className="flex items-start gap-2">
-                            <MapPin className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-500 mt-0.5 flex-shrink-0`} />
+                          <div className="flex items-start gap-1.5">
+                            <MapPin className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-gray-500 mt-0.5 flex-shrink-0`} />
                             <div className="flex-1 min-w-0">
-                              <span className={`font-medium ${isMobile ? 'text-xs' : 'text-sm'}`}>Venue: </span>
-                              <span className={isMobile ? 'text-xs' : 'text-sm'}>{booking.venue}</span>
+                              <span className={`font-medium ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Venue: </span>
+                              <span className={isMobile ? 'text-[10px]' : 'text-xs'}>{booking.venue}</span>
                             </div>
                           </div>
                         </div>
                         
-                        <div className="space-y-1.5">
-                          <div className="flex items-start gap-2">
-                            <Clock className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-500 mt-0.5 flex-shrink-0`} />
+                        <div className="space-y-1">
+                          <div className="flex items-start gap-1.5">
+                            <Clock className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-gray-500 mt-0.5 flex-shrink-0`} />
                             <div className="flex-1 min-w-0">
-                              <span className={`font-medium ${isMobile ? 'text-xs' : 'text-sm'}`}>Time: </span>
-                              <span className={isMobile ? 'text-xs' : 'text-sm'}>{booking.startTime} - {booking.endTime}</span>
+                              <span className={`font-medium ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Time: </span>
+                              <span className={isMobile ? 'text-[10px]' : 'text-xs'}>{booking.startTime} - {booking.endTime}</span>
                             </div>
                           </div>
                           
-                          <div className="flex items-start gap-2">
-                            <Users className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-500 mt-0.5 flex-shrink-0`} />
+                          <div className="flex items-start gap-1.5">
+                            <Users className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-gray-500 mt-0.5 flex-shrink-0`} />
                             <div className="flex-1 min-w-0">
-                              <span className={`font-medium ${isMobile ? 'text-xs' : 'text-sm'}`}>Guests: </span>
-                              <span className={isMobile ? 'text-xs' : 'text-sm'}>{booking.paxCount}</span>
+                              <span className={`font-medium ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Guests: </span>
+                              <span className={isMobile ? 'text-[10px]' : 'text-xs'}>{booking.paxCount}</span>
                             </div>
                           </div>
                         </div>
@@ -788,14 +788,14 @@ export default function VenueCalendarGrid() {
                       
                       {/* Special Instructions */}
                       {booking.specialInstructions && (
-                        <div className={`${isMobile ? 'mt-1 p-2' : 'mt-2 p-2.5'} bg-gray-50 rounded text-xs`}>
-                          <span className={`font-medium ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Special Instructions: </span>
-                          <p className={`text-gray-700 mt-1 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>{booking.specialInstructions}</p>
+                        <div className={`${isMobile ? 'mt-1 p-1.5' : 'mt-1.5 p-2'} bg-gray-50 rounded text-[10px]`}>
+                          <span className={`font-medium ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}>Special Instructions: </span>
+                          <p className={`text-gray-700 mt-0.5 ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}>{booking.specialInstructions}</p>
                         </div>
                       )}
                       
                       {/* Footer: Booking Number and Event Type */}
-                      <div className={`flex items-center justify-between pt-2 border-t ${isMobile ? 'text-[10px]' : 'text-xs'} text-gray-500`}>
+                      <div className={`flex items-center justify-between pt-1.5 border-t ${isMobile ? 'text-[9px]' : 'text-[10px]'} text-gray-500`}>
                         <div>#{booking.bookingNumber}</div>
                         <div className="capitalize">{booking.eventType}</div>
                       </div>

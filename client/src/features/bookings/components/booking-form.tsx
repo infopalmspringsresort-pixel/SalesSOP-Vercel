@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, CheckCircle, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertBookingSchema } from "@shared/schema-client";
@@ -55,8 +55,6 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
   const queryClient = useQueryClient();
   const [eventDuration, setEventDuration] = useState(1);
   const [eventDates, setEventDates] = useState<string[]>([]);
-  const [contractSigned, setContractSigned] = useState(false);
-  const [advanceReceived, setAdvanceReceived] = useState(false);
   const [sessions, setSessions] = useState<z.infer<typeof sessionSchema>[]>([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [conflictData, setConflictData] = useState<any>(null);
@@ -252,6 +250,16 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
       form.setValue("eventDate", eventDateValue);
       form.setValue("confirmedPax", enquiry.expectedPax || undefined);
       
+      // Set event duration from enquiry (already selected during enquiry creation)
+      const enquiryDuration = enquiry.eventDuration || 1;
+      setEventDuration(enquiryDuration);
+      form.setValue("eventDuration", enquiryDuration);
+      
+      // Update event dates based on enquiry duration
+      if (eventDateValue) {
+        updateEventDates(eventDateValue, enquiryDuration);
+      }
+      
       // Ensure enquiryId is set from the enquiry data if available
       if (enquiry.id) {
         form.setValue("enquiryId", enquiry.id);
@@ -274,8 +282,6 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
       setSessions([]);
       setEventDuration(1);
       setEventDates([]);
-      setContractSigned(false);
-      setAdvanceReceived(false);
       setShowFinalReview(false);
       sessionsLoadedRef.current = false; // Reset flag when dialog closes
       // Reset enquiryId when form closes
@@ -388,16 +394,6 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
     } else {
       }
     
-    // Validate booking requirements
-    if (!contractSigned || !advanceReceived) {
-      toast({
-        title: "Requirements Not Met",
-        description: "Both contract signing and advance payment are required before booking confirmation",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     // Sessions validation
     if (!data.sessions || data.sessions.length === 0) {
       toast({
@@ -456,7 +452,7 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
         <DialogHeader>
           <DialogTitle>New Booking Confirmation</DialogTitle>
           <DialogDescription>
-            Convert an enquiry into a confirmed booking. Financial details will be managed separately through quotations.
+            Convert an enquiry into a confirmed booking. Financial details will be managed separately.
           </DialogDescription>
         </DialogHeader>
 
@@ -520,33 +516,36 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
                   )}
                 />
                 
+                {/* Event Duration - Hidden, auto-set from enquiry */}
+                <div className="hidden">
+                  <FormField
+                    control={form.control}
+                    name="eventDuration"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            {...field} 
+                            value={eventDuration}
+                            readOnly
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Display Event Duration (read-only) */}
                 <div>
-                  <Label htmlFor="eventDuration">Event Duration *</Label>
-                  <Select 
-                    value={eventDuration.toString()} 
-                    onValueChange={(value) => {
-                      const duration = parseInt(value);
-                      setEventDuration(duration);
-                      form.setValue("eventDuration", duration);
-                      
-                      // Update event dates based on new duration
-                      const startDate = form.getValues("eventDate");
-                      if (startDate) {
-                        updateEventDates(startDate, duration);
-                      }
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-event-duration">
-                      <SelectValue placeholder="Select duration" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Single Day</SelectItem>
-                      <SelectItem value="2">2 Days</SelectItem>
-                      <SelectItem value="3">3 Days</SelectItem>
-                      <SelectItem value="4">4 Days</SelectItem>
-                      <SelectItem value="5">5 Days</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Event Duration</Label>
+                  <Input 
+                    value={eventDuration === 1 ? "Single Day" : `${eventDuration} Days`}
+                    readOnly
+                    className="bg-muted"
+                    data-testid="display-event-duration"
+                    title="Event duration is set from enquiry data"
+                  />
                 </div>
 
                 {eventDuration > 1 && (
@@ -580,20 +579,6 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
                 </div>
               )}
 
-              {enquiry && eventDuration > 1 && (
-                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                    <Label className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                      Duration Change Notice
-                    </Label>
-                  </div>
-                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                    Event duration changed from single day to {eventDuration} days during booking confirmation.
-                    This change will be logged in the audit trail.
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Client Information - Pre-filled from Enquiry */}
@@ -727,87 +712,6 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
               />
             </div>
 
-            {/* Contract & Payment Requirements */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-b pb-2">Booking Requirements</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 transition-colors ${
-                  contractSigned 
-                    ? 'bg-green-50 border-green-300' 
-                    : 'bg-gray-50 border-gray-200'
-                }`}>
-                  <input
-                    type="checkbox"
-                    id="contractSigned"
-                    checked={contractSigned}
-                    onChange={(e) => setContractSigned(e.target.checked)}
-                    className="h-5 w-5 mt-0.5 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                    data-testid="checkbox-contract-signed"
-                  />
-                  <div className="flex-1">
-                    <Label htmlFor="contractSigned" className="text-sm font-semibold cursor-pointer">
-                      Contract Signed & Terms Agreed
-                    </Label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Confirm that the booking contract has been signed by the client.
-                    </p>
-                  </div>
-                </div>
-                
-                <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 transition-colors ${
-                  advanceReceived 
-                    ? 'bg-green-50 border-green-300' 
-                    : 'bg-gray-50 border-gray-200'
-                }`}>
-                  <input
-                    type="checkbox"
-                    id="advanceReceived"
-                    checked={advanceReceived}
-                    onChange={(e) => setAdvanceReceived(e.target.checked)}
-                    className="h-5 w-5 mt-0.5 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                    data-testid="checkbox-advance-received"
-                  />
-                  <div className="flex-1">
-                    <Label htmlFor="advanceReceived" className="text-sm font-semibold cursor-pointer">
-                      Advance Payment Received
-                    </Label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Confirm that advance payment has been received from the client.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Indicator */}
-              {(!contractSigned || !advanceReceived || sessions.length === 0) ? (
-                <div className="p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <div className="font-semibold text-amber-900 mb-2">Requirements Pending</div>
-                      <ul className="space-y-1 text-sm text-amber-800">
-                        {!contractSigned && <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>Contract must be signed</li>}
-                        {!advanceReceived && <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>Advance payment must be received</li>}
-                        {sessions.length === 0 && <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>At least one event session required</li>}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <div className="font-semibold text-green-900 mb-1">Ready for Confirmation</div>
-                      <p className="text-sm text-green-800">
-                        All requirements met. You can proceed with booking confirmation.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Financial Information Note */}
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -816,7 +720,7 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
                 <div>
                   <h4 className="font-medium text-blue-900 mb-1">Financial Information</h4>
                   <p className="text-sm text-blue-700">
-                    Financial details including quotations and pricing will be managed separately after the booking is confirmed.
+                    Financial details and pricing will be managed separately after the booking is confirmed.
                   </p>
                 </div>
               </div>
@@ -833,18 +737,10 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
               </Button>
               <Button 
                 type="button"
-                disabled={createBookingMutation.isPending || !contractSigned || !advanceReceived || sessions.length === 0}
+                disabled={createBookingMutation.isPending || sessions.length === 0}
                 data-testid="button-save-booking"
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!contractSigned || !advanceReceived) {
-                    toast({
-                      title: "Requirements Not Met",
-                      description: "Both contract signing and advance payment are required before booking confirmation",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
                   
                   if (sessions.length === 0) {
                     toast({

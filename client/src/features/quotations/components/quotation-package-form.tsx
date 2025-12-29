@@ -392,6 +392,7 @@ export default function QuotationPackageForm({
 
   const addRoomItem = () => {
     appendRoom({
+      eventDate: "", // Optional for package templates
       category: "",
       rate: 0,
       numberOfRooms: null,
@@ -803,6 +804,38 @@ export default function QuotationPackageForm({
                             </Button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <FormField
+                              control={form.control}
+                              name={`roomPackages.${index}.eventDate`}
+                              render={({ field }) => (
+                                <FormItem className="flex flex-col">
+                                  <FormLabel className="mb-2">Event Date (Optional)</FormLabel>
+                                  <FormControl>
+                                    <Input 
+                                      type="text"
+                                      placeholder="DD/MM/YYYY"
+                                      maxLength={10}
+                                      value={field.value || ""}
+                                      onChange={(e) => {
+                                        const input = e.target.value;
+                                        const digits = input.replace(/\D/g, '');
+                                        const limited = digits.slice(0, 8);
+                                        let formatted = '';
+                                        for (let i = 0; i < limited.length; i++) {
+                                          if (i === 2 || i === 4) {
+                                            formatted += '/';
+                                          }
+                                          formatted += limited[i];
+                                        }
+                                        field.onChange(formatted);
+                                      }}
+                                      className="h-10"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                             <FormField
                               control={form.control}
                               name={`roomPackages.${index}.category`}

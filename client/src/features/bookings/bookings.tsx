@@ -16,6 +16,14 @@ import type { BookingWithRelations } from "@/types";
 import { formatDate } from "@/utils/dateFormat";
 import { getStatusColor, getStatusLabel, bookingStatusOptions } from "@/lib/status-utils";
 import BookingDetailsDialog from "./components/booking-details-dialog";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export default function Bookings() {
   const { toast } = useToast();
@@ -27,6 +35,8 @@ export default function Bookings() {
   const [selectedBooking, setSelectedBooking] = useState<any | null>(null);
   const [showBookingDetails, setShowBookingDetails] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(25); // Default page size
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -95,9 +105,86 @@ export default function Bookings() {
     setShowBookingDetails(true);
   };
 
-  const { data: bookings = [], isLoading: bookingsLoading } = useQuery<any[]>({
-    queryKey: ["/api/bookings"],
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, dateFilter, eventTypeFilter]);
+
+  // Build query params for pagination
+  const queryParams = new URLSearchParams();
+  queryParams.set('page', currentPage.toString());
+  queryParams.set('pageSize', pageSize.toString());
+  if (statusFilter !== "all") {
+    queryParams.set('status', statusFilter);
+  }
+  if (searchQuery.trim()) {
+    queryParams.set('search', searchQuery.trim());
+  }
+
+  const queryString = queryParams.toString();
+  const apiUrl = `/api/bookings${queryString ? `?${queryString}` : ''}`;
+
+  const { data: bookingsResponse, isLoading: bookingsLoading } = useQuery<any[] | { data: any[]; total: number; page: number; pageSize: number }>({
+    queryKey: [apiUrl],
     enabled: isAuthenticated,
+  });
+
+  // Handle both paginated and non-paginated responses
+  const bookingsData = Array.isArray(bookingsResponse) ? bookingsResponse : (bookingsResponse?.data || []);
+  const totalCount = Array.isArray(bookingsResponse) ? undefined : bookingsResponse?.total;
+  const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : 1;
+
+  // Apply client-side filtering for complex filters (date, event type)
+  const bookings = bookingsData.filter(booking => {
+    // Event type filter
+    if (eventTypeFilter !== "all" && booking.eventType !== eventTypeFilter) {
+      return false;
+    }
+    
+    // Date filter
+    if (dateFilter !== "all" && booking.eventDate) {
+      const eventDate = new Date(booking.eventDate);
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      
+      switch (dateFilter) {
+        case "today":
+          if (eventDate.toDateString() !== today.toDateString()) return false;
+          break;
+        case "tomorrow":
+          if (eventDate.toDateString() !== tomorrow.toDateString()) return false;
+          break;
+        case "this_week":
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          if (eventDate < weekStart || eventDate > weekEnd) return false;
+          break;
+        case "next_week":
+          const nextWeekStart = new Date(today);
+          nextWeekStart.setDate(today.getDate() + (7 - today.getDay()));
+          const nextWeekEnd = new Date(nextWeekStart);
+          nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+          if (eventDate < nextWeekStart || eventDate > nextWeekEnd) return false;
+          break;
+        case "this_month":
+          if (eventDate.getMonth() !== today.getMonth() || eventDate.getFullYear() !== today.getFullYear()) return false;
+          break;
+        case "next_month":
+          const nextMonth = new Date(today);
+          nextMonth.setMonth(today.getMonth() + 1);
+          if (eventDate.getMonth() !== nextMonth.getMonth() || eventDate.getFullYear() !== nextMonth.getFullYear()) return false;
+          break;
+      }
+    }
+    
+    return true;
+  }).sort((a, b) => {
+    const dateA = new Date(a.createdAt || a.eventDate || 0).getTime();
+    const dateB = new Date(b.createdAt || b.eventDate || 0).getTime();
+    return dateB - dateA;
   });
 
   // Handle URL search parameters
@@ -118,86 +205,10 @@ export default function Bookings() {
     }
   }, [bookings]);
 
-  const filteredBookings = (bookings || []).filter(booking => {
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      const matchesSearch = (
-        booking.bookingNumber.toLowerCase().includes(query) ||
-        booking.clientName.toLowerCase().includes(query) ||
-        booking.contactNumber.includes(query) ||
-        booking.enquiryNumber.toLowerCase().includes(query) ||
-        (booking.email && booking.email.toLowerCase().includes(query)) ||
-        (booking.salesperson?.firstName && booking.salesperson.firstName.toLowerCase().includes(query)) ||
-        (booking.salesperson?.lastName && booking.salesperson.lastName.toLowerCase().includes(query))
-      );
-      if (!matchesSearch) return false;
-    }
-    
-    // Status filter - handle null/undefined status (default to 'booked')
-    if (statusFilter !== "all") {
-      const bookingStatus = booking.status || 'booked';
-      if (bookingStatus !== statusFilter) {
-        return false;
-      }
-    }
-
-    // Event type filter
-    if (eventTypeFilter !== "all" && booking.eventType !== eventTypeFilter) {
-      return false;
-    }
-    
-    // Date filter
-    if (dateFilter !== "all" && booking.eventDate) {
-      const eventDate = new Date(booking.eventDate);
-      // Check if date is valid
-      if (isNaN(eventDate.getTime())) return false;
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      eventDate.setHours(0, 0, 0, 0);
-      
-      switch (dateFilter) {
-        case "today":
-          if (eventDate.getTime() !== today.getTime()) return false;
-          break;
-        case "tomorrow":
-          if (eventDate.getTime() !== tomorrow.getTime()) return false;
-          break;
-        case "this_week":
-          const weekStart = new Date(today);
-          weekStart.setDate(today.getDate() - today.getDay());
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-          if (eventDate < weekStart || eventDate > weekEnd) return false;
-          break;
-        case "next_week":
-          const nextWeekStart = new Date(today);
-          nextWeekStart.setDate(today.getDate() + (7 - today.getDay()));
-          const nextWeekEnd = new Date(nextWeekStart);
-          nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
-          nextWeekEnd.setHours(23, 59, 59, 999);
-          if (eventDate < nextWeekStart || eventDate > nextWeekEnd) return false;
-          break;
-        case "this_month":
-          if (eventDate.getMonth() !== today.getMonth() || eventDate.getFullYear() !== today.getFullYear()) return false;
-          break;
-        case "next_month":
-          const nextMonth = new Date(today);
-          nextMonth.setMonth(today.getMonth() + 1);
-          nextMonth.setDate(1);
-          const nextMonthEnd = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0);
-          nextMonthEnd.setHours(23, 59, 59, 999);
-          if (eventDate.getMonth() !== nextMonth.getMonth() || eventDate.getFullYear() !== nextMonth.getFullYear()) return false;
-          break;
-      }
-    }
-    
-    return true;
-  });
+  // Search and status filtering are handled server-side via API query params
+  // Event type and date filtering are already applied to `bookings` variable above
+  // So use bookings directly to avoid duplicate filtering
+  const filteredBookings = bookings;
 
   if (isLoading) {
     return (
@@ -471,6 +482,67 @@ export default function Bookings() {
                     </table>
                   </div>
 
+                  {/* Pagination - Desktop */}
+                  {totalCount !== undefined && totalCount > 0 && (
+                    <div className="hidden lg:flex flex-col items-center justify-center gap-4 px-6 py-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} bookings
+                      </div>
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious 
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage > 1) setCurrentPage(currentPage - 1);
+                              }}
+                              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 7) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 4) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 3) {
+                              pageNum = totalPages - 6 + i;
+                            } else {
+                              pageNum = currentPage - 3 + i;
+                            }
+                            
+                            return (
+                              <PaginationItem key={pageNum}>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setCurrentPage(pageNum);
+                                  }}
+                                  isActive={currentPage === pageNum}
+                                  className="cursor-pointer"
+                                >
+                                  {pageNum}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          })}
+                          <PaginationItem>
+                            <PaginationNext
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+                              }}
+                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  )}
+
                   {/* Mobile Card View - Enhanced for touch */}
                   <div className="lg:hidden space-y-2 sm:space-y-3 pb-20">
                     {filteredBookings.map((booking) => {
@@ -554,6 +626,67 @@ export default function Bookings() {
                       );
                     })}
                   </div>
+
+                  {/* Pagination for Mobile */}
+                  {totalCount !== undefined && totalCount > 0 && (
+                    <div className="lg:hidden flex flex-col items-center justify-center gap-4 px-4 py-4 border-t mt-4">
+                      <div className="text-sm text-muted-foreground text-center">
+                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} bookings
+                      </div>
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious 
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage > 1) setCurrentPage(currentPage - 1);
+                              }}
+                              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            
+                            return (
+                              <PaginationItem key={pageNum}>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setCurrentPage(pageNum);
+                                  }}
+                                  isActive={currentPage === pageNum}
+                                  className="cursor-pointer"
+                                >
+                                  {pageNum}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          })}
+                          <PaginationItem>
+                            <PaginationNext
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+                              }}
+                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>

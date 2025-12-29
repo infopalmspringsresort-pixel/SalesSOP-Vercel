@@ -525,9 +525,13 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
           const resolvedTotalOccupancy = typeof rawRoom.totalOccupancy === 'number'
             ? rawRoom.totalOccupancy
             : Number.parseInt(rawRoom.totalOccupancy ?? '', 10) || null;
+          
+          // Preserve eventDate or use default
+          const eventDate = rawRoom.eventDate || getDefaultRoomDate();
 
           return {
             ...room,
+            eventDate: eventDate,
             category: typeof rawRoom.category === 'string'
               ? rawRoom.category
               : (rawRoom.category?.name ?? rawRoom.category ?? ''),
@@ -809,12 +813,15 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
       // Clean up the data - remove null/undefined values and ensure proper types
       const cleanedData = { ...data };
       
-      // If editing, use PATCH to update existing quotation
+      // If editing, create a NEW quotation version (not update existing)
       if (editingQuotation && editingQuotation.id) {
-        console.log('🔄 Making PATCH request to /api/quotations/' + editingQuotation.id);
+        console.log('🔄 Creating new quotation version from existing quotation:', editingQuotation.id);
         
-        // Remove parentQuotationId when updating (should not be changed)
-        delete cleanedData.parentQuotationId;
+        // Set parentQuotationId to create a new version
+        cleanedData.parentQuotationId = editingQuotation.id;
+        
+        // Remove id field since we're creating a new quotation, not updating
+        delete cleanedData.id;
         
         // Ensure venueRentalItems have proper types
         if (cleanedData.venueRentalItems) {
@@ -830,6 +837,7 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
         // Ensure roomPackages have proper types
         if (cleanedData.roomPackages) {
           cleanedData.roomPackages = cleanedData.roomPackages.map((room: any) => ({
+            eventDate: room.eventDate || '',
             category: typeof room.category === 'string' ? room.category : (room.category?.name || room.category || ''),
             rate: typeof room.rate === 'number' ? room.rate : (parseFloat(room.rate) || 0),
             numberOfRooms: typeof room.numberOfRooms === 'number' ? room.numberOfRooms : (room.numberOfRooms ? parseInt(room.numberOfRooms) : null),
@@ -840,13 +848,13 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
           }));
         }
         
-        console.log('🔄 Request data:', cleanedData);
-        const response = await apiRequest("PATCH", `/api/quotations/${editingQuotation.id}`, cleanedData);
+        console.log('🔄 Request data (new version):', cleanedData);
+        const response = await apiRequest("POST", "/api/quotations", cleanedData);
         console.log('🔄 Response status:', response.status);
         if (!response.ok) {
           const error = await response.json();
           console.log('❌ Error response:', error);
-          throw new Error(error.message || "Failed to update quotation");
+          throw new Error(error.message || "Failed to create new quotation version");
         }
         const result = await response.json();
         console.log('✅ Success response:', result);
@@ -872,6 +880,7 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
         // Ensure roomPackages have proper types
         if (cleanedData.roomPackages) {
           cleanedData.roomPackages = cleanedData.roomPackages.map((room: any) => ({
+            eventDate: room.eventDate || '',
             category: typeof room.category === 'string' ? room.category : (room.category?.name || room.category || ''),
             rate: typeof room.rate === 'number' ? room.rate : (parseFloat(room.rate) || 0),
             numberOfRooms: typeof room.numberOfRooms === 'number' ? room.numberOfRooms : (room.numberOfRooms ? parseInt(room.numberOfRooms) : null),
@@ -906,14 +915,14 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
       queryClient.refetchQueries({ queryKey: [`/api/quotations/activities/${enquiry.id}`] });
       
       const message = editingQuotation 
-        ? "Quotation updated successfully" 
+        ? "New quotation version created successfully" 
         : "Quotation created successfully";
       toast({ title: "Success", description: message });
       
       // Store the quotation and show preview
       setCreatedQuotation(response);
       setShowPreviewDialog(true);
-      setWasNewQuotation(!editingQuotation); // Track if this was a new quotation
+      setWasNewQuotation(true); // Always true now since editing creates a new version
       
       // Close the form dialog
       onOpenChange(false);
@@ -921,7 +930,7 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
     onError: (error: any) => {
       toast({ 
         title: "Error", 
-        description: error.message || (editingQuotation ? "Failed to update quotation" : "Failed to create quotation"), 
+        description: error.message || (editingQuotation ? "Failed to create new quotation version" : "Failed to create quotation"), 
         variant: "destructive" 
       });
     },
@@ -1218,26 +1227,31 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
   };
 
   const addVenueItem = () => {
-    // Get event date and convert to DD/MM/YYYY format if it exists
-    const formEventDate = form.getValues('eventDate');
+    // Use parsedEventDates if available, otherwise fallback to form event date
     let defaultDate = "";
-    if (formEventDate) {
-      try {
-        const date = new Date(formEventDate);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        defaultDate = `${day}/${month}/${year}`;
-      } catch {
-        defaultDate = formEventDate; // Use as-is if parsing fails
-      }
+    if (parsedEventDates.length > 0) {
+      defaultDate = parsedEventDates[0].value; // Use first available date in DD/MM/YYYY format
     } else {
-      // Default to today in DD/MM/YYYY format
-      const today = new Date();
-      const day = String(today.getDate()).padStart(2, '0');
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const year = today.getFullYear();
-      defaultDate = `${day}/${month}/${year}`;
+      // Fallback: Get event date and convert to DD/MM/YYYY format if it exists
+      const formEventDate = form.getValues('eventDate');
+      if (formEventDate) {
+        try {
+          const date = new Date(formEventDate);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          defaultDate = `${day}/${month}/${year}`;
+        } catch {
+          defaultDate = formEventDate; // Use as-is if parsing fails
+        }
+      } else {
+        // Default to today in DD/MM/YYYY format
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        defaultDate = `${day}/${month}/${year}`;
+      }
     }
     
     appendVenue({
@@ -1249,8 +1263,108 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
     });
   };
 
+  // Parse event dates from enquiry for dropdown (similar to session management)
+  const parsedEventDates = useMemo(() => {
+    if (!enquiry) return [];
+    
+    // Use eventDates array if available
+    if (Array.isArray(enquiry.eventDates) && enquiry.eventDates.length > 0) {
+      return enquiry.eventDates
+        .map((date: any) => {
+          const parsed = new Date(date);
+          if (isNaN(parsed.getTime())) {
+            return null;
+          }
+          const value = parsed.toISOString().split('T')[0];
+          // Convert to DD/MM/YYYY for display and storage
+          const day = String(parsed.getDate()).padStart(2, '0');
+          const month = String(parsed.getMonth() + 1).padStart(2, '0');
+          const year = parsed.getFullYear();
+          const ddMMYYYY = `${day}/${month}/${year}`;
+          
+          return {
+            value: ddMMYYYY, // Store in DD/MM/YYYY format (same as venue items)
+            label: parsed.toLocaleDateString('en-US', {
+              weekday: 'short',
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            }),
+            isoValue: value, // Keep ISO format for comparison
+          };
+        })
+        .filter((dateOption): dateOption is { value: string; label: string; isoValue: string } => Boolean(dateOption));
+    }
+    
+    // Fallback: generate dates from eventDate and eventDuration
+    const eventStartDate = enquiry.eventDate;
+    const eventDuration = enquiry.eventDuration || 1;
+    
+    if (!eventStartDate) return [];
+    
+    const dates: { value: string; label: string; isoValue: string }[] = [];
+    const startDate = new Date(eventStartDate);
+    
+    if (isNaN(startDate.getTime())) return [];
+    
+    for (let i = 0; i < eventDuration; i++) {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + i);
+      const isoValue = date.toISOString().split('T')[0];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const ddMMYYYY = `${day}/${month}/${year}`;
+      
+      dates.push({
+        value: ddMMYYYY, // Store in DD/MM/YYYY format
+        label: date.toLocaleDateString('en-US', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        }),
+        isoValue: isoValue,
+      });
+    }
+    
+    return dates;
+  }, [enquiry]);
+
+  // Helper function to get default date for new room package
+  const getDefaultRoomDate = (): string => {
+    if (parsedEventDates.length > 0) {
+      return parsedEventDates[0].value; // Return first available date in DD/MM/YYYY format
+    }
+    
+    // Fallback to main event date or today
+    const formEventDate = form.getValues('eventDate');
+    if (formEventDate) {
+      try {
+        const date = new Date(formEventDate);
+        if (!isNaN(date.getTime())) {
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${day}/${month}/${year}`;
+        }
+        return formEventDate;
+      } catch {
+        return formEventDate;
+      }
+    }
+    
+    // Default to today in DD/MM/YYYY format
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   const addRoomItem = () => {
     appendRoom({
+      eventDate: getDefaultRoomDate(),
       category: "",
       rate: 0,
       numberOfRooms: null,
@@ -1422,7 +1536,11 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
       const numberOfRoomsValue = typeof room.numberOfRooms === 'number' ? room.numberOfRooms : (room.numberOfRooms ? parseInt(room.numberOfRooms) : null);
       const totalOccupancyValue = typeof room.totalOccupancy === 'number' ? room.totalOccupancy : (room.totalOccupancy ? parseInt(room.totalOccupancy) : null);
       
+      // Preserve eventDate or use default
+      const eventDate = room.eventDate || defaultDate;
+      
       return {
+        eventDate: eventDate,
         category: categoryValue,
         rate: rateValue,
         numberOfRooms: numberOfRoomsValue,
@@ -1637,7 +1755,7 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-10">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
               {editingQuotation ? `Edit Quotation (Version ${editingQuotation.version || 1})` : "Create New Quotation"}
@@ -1911,122 +2029,59 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
                               control={form.control}
                               name={`venueRentalItems.${index}.eventDate`}
                               render={({ field }) => {
-                                // Helper function to format date with slashes
-                                const formatDateWithSlashes = (value: string): string => {
-                                  // Remove all non-digit characters
-                                  const digits = value.replace(/\D/g, '');
-                                  
-                                  // Limit to 8 digits (DDMMYYYY)
-                                  const limited = digits.slice(0, 8);
-                                  
-                                  // Insert slashes at appropriate positions
-                                  let formatted = '';
-                                  for (let i = 0; i < limited.length; i++) {
-                                    if (i === 2 || i === 4) {
-                                      formatted += '/';
-                                    }
-                                    formatted += limited[i];
-                                  }
-                                  
-                                  return formatted;
-                                };
-
-                                // Helper function to handle input changes
-                                const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                                  const input = e.target.value;
-                                  
-                                  // Format the new value (removes non-digits and adds slashes)
-                                  const formatted = formatDateWithSlashes(input);
-                                  
-                                  // Calculate cursor position based on digit count
-                                  const digitsBefore = input.slice(0, e.target.selectionStart || 0).replace(/\D/g, '').length;
-                                  
-                                  // Position cursor: after digits + slashes that should appear before cursor
-                                  let newCursorPosition = digitsBefore;
-                                  if (digitsBefore > 2) newCursorPosition++; // After first slash
-                                  if (digitsBefore > 4) newCursorPosition++; // After second slash
-                                  
-                                  // Ensure cursor doesn't exceed formatted length
-                                  newCursorPosition = Math.min(newCursorPosition, formatted.length);
-                                  
-                                  field.onChange(formatted);
-                                  
-                                  // Set cursor position after state update
-                                  setTimeout(() => {
-                                    e.target.setSelectionRange(newCursorPosition, newCursorPosition);
-                                  }, 0);
-                                };
-
-                                // Handle key down to prevent deleting/editing slashes
-                                const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-                                  const input = e.currentTarget;
-                                  const cursorPosition = input.selectionStart || 0;
-                                  const value = field.value || '';
-                                  
-                                  // Prevent typing if cursor is at a slash position
-                                  if (e.key.length === 1 && !/\d/.test(e.key)) {
-                                    // Non-digit character typed - prevent if at slash position
-                                    if (value[cursorPosition] === '/') {
-                                      e.preventDefault();
-                                      // Move cursor forward past the slash
-                                      setTimeout(() => {
-                                        input.setSelectionRange(cursorPosition + 1, cursorPosition + 1);
-                                      }, 0);
-                                      return;
-                                    }
-                                  }
-                                  
-                                  // Handle backspace - skip slashes
-                                  if (e.key === 'Backspace') {
-                                    if (cursorPosition > 0 && value[cursorPosition - 1] === '/') {
-                                      e.preventDefault();
-                                      // Delete the digit before the slash
-                                      const digits = value.replace(/\D/g, '');
-                                      const digitPos = value.slice(0, cursorPosition - 1).replace(/\D/g, '').length;
-                                      if (digitPos > 0) {
-                                        const newDigits = digits.slice(0, digitPos - 1) + digits.slice(digitPos);
-                                        const formatted = formatDateWithSlashes(newDigits);
-                                        field.onChange(formatted);
-                                        setTimeout(() => {
-                                          const newPos = cursorPosition - 1;
-                                          input.setSelectionRange(Math.max(0, newPos), Math.max(0, newPos));
-                                        }, 0);
-                                      }
-                                    }
-                                  }
-                                  
-                                  // Handle delete - skip slashes
-                                  if (e.key === 'Delete') {
-                                    if (value[cursorPosition] === '/') {
-                                      e.preventDefault();
-                                      // Delete the digit after the slash
-                                      const digits = value.replace(/\D/g, '');
-                                      const digitPos = value.slice(0, cursorPosition).replace(/\D/g, '').length;
-                                      if (digitPos < digits.length) {
-                                        const newDigits = digits.slice(0, digitPos) + digits.slice(digitPos + 1);
-                                        const formatted = formatDateWithSlashes(newDigits);
-                                        field.onChange(formatted);
-                                        setTimeout(() => {
-                                          input.setSelectionRange(cursorPosition, cursorPosition);
-                                        }, 0);
-                                      }
-                                    }
-                                  }
-                                };
-
                                 return (
                                   <FormItem>
                                     <FormLabel>Date *</FormLabel>
-                                    <FormControl>
-                                      <Input 
-                                        type="text"
-                                        placeholder="DD/MM/YYYY"
-                                        maxLength={10}
-                                        value={field.value || ""}
-                                        onChange={handleDateChange}
-                                        onKeyDown={handleKeyDown}
-                                      />
-                                    </FormControl>
+                                    {parsedEventDates.length > 0 ? (
+                                      <>
+                                        <Select
+                                          value={field.value || ""}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                          }}
+                                        >
+                                          <FormControl>
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Select event date" />
+                                            </SelectTrigger>
+                                          </FormControl>
+                                          <SelectContent position="popper">
+                                            {parsedEventDates.map((dateOption, dayIndex) => (
+                                              <SelectItem key={dateOption.value} value={dateOption.value}>
+                                                Day {dayIndex + 1} • {dateOption.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        {parsedEventDates.length > 1 && (
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({parsedEventDates.length} {parsedEventDates.length > 1 ? "days" : "day"})
+                                          </p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <FormControl>
+                                        <Input 
+                                          type="text"
+                                          placeholder="DD/MM/YYYY"
+                                          maxLength={10}
+                                          value={field.value || ""}
+                                          onChange={(e) => {
+                                            const input = e.target.value;
+                                            const digits = input.replace(/\D/g, '');
+                                            const limited = digits.slice(0, 8);
+                                            let formatted = '';
+                                            for (let i = 0; i < limited.length; i++) {
+                                              if (i === 2 || i === 4) {
+                                                formatted += '/';
+                                              }
+                                              formatted += limited[i];
+                                            }
+                                            field.onChange(formatted);
+                                          }}
+                                        />
+                                      </FormControl>
+                                    )}
                                     <FormMessage />
                                   </FormItem>
                                 );
@@ -2192,6 +2247,69 @@ export default function QuotationForm({ open, onOpenChange, enquiry, editingQuot
                             </Button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <FormField
+                              control={form.control}
+                              name={`roomPackages.${index}.eventDate`}
+                              render={({ field }) => {
+                                return (
+                                  <FormItem className="flex flex-col">
+                                    <FormLabel className="mb-2">Event Date *</FormLabel>
+                                    {parsedEventDates.length > 0 ? (
+                                      <>
+                                        <Select
+                                          value={field.value || ""}
+                                          onValueChange={(value) => {
+                                            field.onChange(value);
+                                          }}
+                                        >
+                                          <FormControl>
+                                            <SelectTrigger className="h-10">
+                                              <SelectValue placeholder="Select event date" />
+                                            </SelectTrigger>
+                                          </FormControl>
+                                          <SelectContent position="popper">
+                                            {parsedEventDates.map((dateOption, dayIndex) => (
+                                              <SelectItem key={dateOption.value} value={dateOption.value}>
+                                                Day {dayIndex + 1} • {dateOption.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        {parsedEventDates.length > 1 && (
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({parsedEventDates.length} {parsedEventDates.length > 1 ? "days" : "day"})
+                                          </p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <FormControl>
+                                        <Input 
+                                          type="text"
+                                          placeholder="DD/MM/YYYY"
+                                          maxLength={10}
+                                          value={field.value || ""}
+                                          onChange={(e) => {
+                                            const input = e.target.value;
+                                            const digits = input.replace(/\D/g, '');
+                                            const limited = digits.slice(0, 8);
+                                            let formatted = '';
+                                            for (let i = 0; i < limited.length; i++) {
+                                              if (i === 2 || i === 4) {
+                                                formatted += '/';
+                                              }
+                                              formatted += limited[i];
+                                            }
+                                            field.onChange(formatted);
+                                          }}
+                                          className="h-10"
+                                        />
+                                      </FormControl>
+                                    )}
+                                    <FormMessage />
+                                  </FormItem>
+                                );
+                              }}
+                            />
                             <FormField
                               control={form.control}
                               name={`roomPackages.${index}.category`}

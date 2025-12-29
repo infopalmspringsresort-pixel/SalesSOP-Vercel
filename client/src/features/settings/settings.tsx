@@ -292,7 +292,7 @@ export function SettingsPage() {
             <span className="hidden sm:inline">User Management</span>
             <span className="sm:hidden">Users</span>
           </Button>
-          <Button
+          {/* <Button
             variant={activeTab === "audit" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("audit")}
@@ -302,7 +302,7 @@ export function SettingsPage() {
             <Activity className="h-4 w-4 mr-1 lg:mr-2" />
             <span className="hidden sm:inline">Audit Trail</span>
             <span className="sm:hidden">Audit</span>
-          </Button>
+          </Button> */}
           <Button
             variant={activeTab === "export" ? "default" : "ghost"}
             size="sm"
@@ -725,11 +725,12 @@ export function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Event Types</SelectItem>
-                    {Array.from(new Set(enquiries.map((enquiry: any) => enquiry.eventType).filter(Boolean))).map((eventType: string) => (
-                      <SelectItem key={eventType} value={eventType}>
-                        {eventType}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="wedding">Wedding</SelectItem>
+                    <SelectItem value="birthday">Birthday Party</SelectItem>
+                    <SelectItem value="corporate">Corporate Event</SelectItem>
+                    <SelectItem value="conference">Conference</SelectItem>
+                    <SelectItem value="anniversary">Anniversary</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

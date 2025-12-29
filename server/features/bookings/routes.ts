@@ -29,17 +29,17 @@ export function registerBookingRoutes(app: Express) {
         processedData.eventDates = processedData.eventDates.map((date: any) => 
           typeof date === 'string' ? new Date(date) : date
         );
-        }
+      }
+      
+      // Convert session dates to Date objects BEFORE validation
+      if (processedData.sessions && Array.isArray(processedData.sessions)) {
+        processedData.sessions = processedData.sessions.map((session: any) => ({
+          ...session,
+          sessionDate: typeof session.sessionDate === 'string' ? new Date(session.sessionDate) : (session.sessionDate instanceof Date ? session.sessionDate : new Date(session.sessionDate))
+        }));
+      }
       
       const validatedData = insertBookingSchema.parse(processedData);
-      
-      // ✅ FIX: Convert session dates to Date objects for database storage
-      if (validatedData.sessions && Array.isArray(validatedData.sessions)) {
-        validatedData.sessions = validatedData.sessions.map((session: any) => ({
-          ...session,
-          sessionDate: typeof session.sessionDate === 'string' ? new Date(session.sessionDate) : session.sessionDate
-        }));
-        }
       
       // Inherit salespersonId from enquiry if enquiryId is provided
       if (validatedData.enquiryId) {
@@ -89,8 +89,21 @@ export function registerBookingRoutes(app: Express) {
 
   app.get("/api/bookings", requirePermission('bookings', 'read'), async (req, res) => {
     try {
-      const bookings = await storage.getBookings(req.query);
-      res.json(bookings);
+      // Extract pagination parameters
+      const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize, 10) : undefined;
+      
+      // If pagination params are provided, use them; otherwise fetch all
+      const filters = {
+        ...req.query,
+        ...(page !== undefined && pageSize !== undefined ? { page, pageSize } : {})
+      };
+      
+      const result = await storage.getBookings(filters);
+      
+      // If pagination was requested, result will be an object with data, total, page, pageSize
+      // Otherwise it will be an array
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch bookings" });
     }
@@ -112,6 +125,14 @@ export function registerBookingRoutes(app: Express) {
       
       // Get old booking data for comparison
       const oldBooking = await storage.getBookingById(req.params.id);
+      
+      // Prevent status updates if booking is already closed or cancelled
+      if ((oldBooking?.status === 'closed' || oldBooking?.status === 'cancelled') && processedData.status && processedData.status !== oldBooking.status) {
+        return res.status(400).json({ 
+          message: `Cannot update status: Booking is already ${oldBooking.status}. ${oldBooking.status === 'closed' ? 'Closed' : 'Cancelled'} bookings cannot have their status changed.` 
+        });
+      }
+      
       const booking = await storage.updateBooking(req.params.id, processedData);
       
       // Enhanced audit logging for booking updates

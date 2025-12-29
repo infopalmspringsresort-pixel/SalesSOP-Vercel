@@ -15,9 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { TimePicker } from "@/components/ui/time-picker";
-import { Plus, Search, Filter, Eye, Phone, FileText, Edit, Calendar, X, Menu, ChartLine, Mail, ClipboardList, BarChart3, MapPin, Users } from "lucide-react";
+import { Plus, Search, Filter, Eye, Phone, FileText, Edit, Calendar, X, Mail, ClipboardList, BarChart3, MapPin, Users } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -26,6 +25,15 @@ import { formatDate } from "@/utils/dateFormat";
 import { getStatusColor, getStatusLabel, enquiryStatusOptions } from "@/lib/status-utils";
 import UnassignedEnquiries from "@/components/unassigned-enquiries";
 import TransferNotifications from "@/components/transfer-notifications";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export default function Enquiries() {
   const { toast } = useToast();
@@ -42,6 +50,7 @@ export default function Enquiries() {
   const [dateFilter, setDateFilter] = useState("all");
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [salespersonFilter, setSalespersonFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("date"); // "date" for creation date, "status" for status
   const [showFilters, setShowFilters] = useState(false);
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
   const [followUpEnquiry, setFollowUpEnquiry] = useState<EnquiryWithRelations | null>(null);
@@ -51,6 +60,8 @@ export default function Enquiries() {
   const [repeatFollowUp, setRepeatFollowUp] = useState(false);
   const [repeatInterval, setRepeatInterval] = useState(7);
   const [repeatEndDate, setRepeatEndDate] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(25); // Default page size
 
   const queryClient = useQueryClient();
 
@@ -68,10 +79,34 @@ export default function Enquiries() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: enquiries = [], isLoading: enquiriesLoading } = useQuery<EnquiryWithRelations[]>({
-    queryKey: ["/api/enquiries"],
+  // Build query params for pagination
+  const queryParams = new URLSearchParams();
+  queryParams.set('page', currentPage.toString());
+  queryParams.set('pageSize', pageSize.toString());
+  if (statusFilter !== "all") {
+    queryParams.set('status', statusFilter);
+  }
+  if (searchQuery.trim()) {
+    queryParams.set('search', searchQuery.trim());
+  }
+
+  const queryString = queryParams.toString();
+  const apiUrl = `/api/enquiries${queryString ? `?${queryString}` : ''}`;
+
+  const { data: enquiriesResponse, isLoading: enquiriesLoading } = useQuery<EnquiryWithRelations[] | { data: EnquiryWithRelations[]; total: number; page: number; pageSize: number }>({
+    queryKey: [apiUrl],
     enabled: isAuthenticated,
   });
+
+  // Handle both paginated and non-paginated responses
+  const enquiries = Array.isArray(enquiriesResponse) ? enquiriesResponse : (enquiriesResponse?.data || []);
+  const totalCount = Array.isArray(enquiriesResponse) ? undefined : enquiriesResponse?.total;
+  const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : 1;
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, followUpFilter, dateFilter, eventTypeFilter, salespersonFilter]);
 
   // Handle URL search parameters
   useEffect(() => {
@@ -290,59 +325,6 @@ export default function Enquiries() {
       <main className="flex-1 overflow-y-auto lg:ml-0 ml-0 h-screen touch-pan-y" style={{ paddingTop: '0' }}>
         <header className="bg-card border-b border-border px-4 lg:px-6 py-3 lg:py-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="lg:hidden min-h-[44px] min-w-[44px] touch-manipulation"
-                >
-                  <Menu className="h-6 w-6" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
-                <div className="flex flex-col h-full">
-                  <div className="p-4 border-b border-border">
-                    <h1 className="text-xl font-bold text-foreground">SOP Manager</h1>
-                  </div>
-                  <nav className="flex-1 p-4">
-                    <div className="space-y-2">
-                      <Link href="/">
-                        <Button variant="ghost" className="w-full justify-start">
-                          <ChartLine className="mr-2 h-4 w-4" />
-                          Dashboard
-                        </Button>
-                      </Link>
-                      <Link href="/enquiries">
-                        <Button variant="ghost" className="w-full justify-start bg-muted">
-                          <Mail className="mr-2 h-4 w-4" />
-                          Enquiries
-                        </Button>
-                      </Link>
-                      <Link href="/bookings">
-                        <Button variant="ghost" className="w-full justify-start">
-                          <FileText className="mr-2 h-4 w-4" />
-                          Bookings
-                        </Button>
-                      </Link>
-                      <Link href="/beo-management">
-                        <Button variant="ghost" className="w-full justify-start">
-                          <ClipboardList className="mr-2 h-4 w-4" />
-                          BEO Management
-                        </Button>
-                      </Link>
-                      <Link href="/reports">
-                        <Button variant="ghost" className="w-full justify-start">
-                          <BarChart3 className="mr-2 h-4 w-4" />
-                          Reports
-                        </Button>
-                      </Link>
-                    </div>
-                  </nav>
-                </div>
-              </SheetContent>
-            </Sheet>
-            
             <div className="flex-1 flex justify-center">
               <div className="text-center">
                 <h1 className="text-xl lg:text-2xl font-bold text-foreground">Enquiries</h1>
@@ -394,8 +376,19 @@ export default function Enquiries() {
                     <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   </div>
                   
-                  {/* Filters */}
+                  {/* Sort and Filters */}
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="w-[140px] sm:w-[160px]">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="date">By Date (Newest)</SelectItem>
+                        <SelectItem value="date-oldest">By Date (Oldest)</SelectItem>
+                        <SelectItem value="status">By Status</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
                     <Popover open={showFilters} onOpenChange={setShowFilters}>
                       <PopoverTrigger asChild>
                         <Button variant="outline" size="sm" className="relative whitespace-nowrap">
@@ -550,103 +543,7 @@ export default function Enquiries() {
                         </tr>
                       </thead>
                       <tbody>
-                      {(enquiries || []).filter(enquiry => {
-                        // Search filter
-                        if (searchQuery.trim()) {
-                          const query = searchQuery.toLowerCase().trim();
-                          const matchesSearch = (
-                            enquiry.enquiryNumber.toLowerCase().includes(query) ||
-                            enquiry.clientName.toLowerCase().includes(query) ||
-                            enquiry.contactNumber.includes(query) ||
-                            (enquiry.email && enquiry.email.toLowerCase().includes(query)) ||
-                            (enquiry.salesperson?.firstName && enquiry.salesperson.firstName.toLowerCase().includes(query)) ||
-                            (enquiry.salesperson?.lastName && enquiry.salesperson.lastName.toLowerCase().includes(query))
-                          );
-                          if (!matchesSearch) return false;
-                        }
-                        
-                        // Status filter
-                        if (statusFilter !== "all" && enquiry.status !== statusFilter) {
-                          return false;
-                        }
-
-                        // Event type filter
-                        if (eventTypeFilter !== "all" && enquiry.eventType !== eventTypeFilter) {
-                          return false;
-                        }
-                        
-                        // Date filter
-                        if (dateFilter !== "all" && enquiry.eventDate) {
-                          const eventDate = new Date(enquiry.eventDate);
-                          const today = new Date();
-                          const tomorrow = new Date(today);
-                          tomorrow.setDate(today.getDate() + 1);
-                          
-                          switch (dateFilter) {
-                            case "today":
-                              if (eventDate.toDateString() !== today.toDateString()) return false;
-                              break;
-                            case "tomorrow":
-                              if (eventDate.toDateString() !== tomorrow.toDateString()) return false;
-                              break;
-                            case "this_week":
-                              const weekStart = new Date(today);
-                              weekStart.setDate(today.getDate() - today.getDay());
-                              const weekEnd = new Date(weekStart);
-                              weekEnd.setDate(weekStart.getDate() + 6);
-                              if (eventDate < weekStart || eventDate > weekEnd) return false;
-                              break;
-                            case "next_week":
-                              const nextWeekStart = new Date(today);
-                              nextWeekStart.setDate(today.getDate() + (7 - today.getDay()));
-                              const nextWeekEnd = new Date(nextWeekStart);
-                              nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
-                              if (eventDate < nextWeekStart || eventDate > nextWeekEnd) return false;
-                              break;
-                            case "this_month":
-                              if (eventDate.getMonth() !== today.getMonth() || eventDate.getFullYear() !== today.getFullYear()) return false;
-                              break;
-                            case "next_month":
-                              const nextMonth = new Date(today);
-                              nextMonth.setMonth(today.getMonth() + 1);
-                              if (eventDate.getMonth() !== nextMonth.getMonth() || eventDate.getFullYear() !== nextMonth.getFullYear()) return false;
-                              break;
-                          }
-                        }
-                        
-                        // Follow-up filter (exclude booked enquiries as they don't need follow-ups)
-                        if (followUpFilter === "overdue") {
-                          // Skip booked enquiries - they don't need follow-ups
-                          if (enquiry.status === "booked") return false;
-                          const hasOverdueFollowUp = enquiry.nextFollowUpDate && new Date(enquiry.nextFollowUpDate) < new Date();
-                          if (!hasOverdueFollowUp) return false;
-                        } else if (followUpFilter === "pending") {
-                          // Skip booked enquiries - they don't need follow-ups
-                          if (enquiry.status === "booked") return false;
-                          const hasPendingFollowUp = enquiry.nextFollowUpDate && new Date(enquiry.nextFollowUpDate) >= new Date();
-                          if (!hasPendingFollowUp) return false;
-                        }
-                        
-                        // Salesperson filter
-                        if (salespersonFilter !== "all") {
-                          const enquirySalespersonId = enquiry.salespersonId || enquiry.assignedTo;
-                          if (enquirySalespersonId !== salespersonFilter) return false;
-                        }
-                        
-                        return true;
-                      }).sort((a, b) => {
-                        // Status hierarchy: new → quotation_sent → ongoing → converted → booked
-                        const statusOrder: { [key: string]: number } = {
-                          'new': 1,
-                          'quotation_sent': 2,
-                          'ongoing': 3,
-                          'converted': 4,
-                          'booked': 5,
-                        };
-                        const statusA = statusOrder[a.status || 'new'] || 99;
-                        const statusB = statusOrder[b.status || 'new'] || 99;
-                        return statusA - statusB;
-                      }).map((enquiry) => (
+                      {(enquiries || []).map((enquiry) => (
                         <tr 
                           key={enquiry.id} 
                           className="border-b border-border hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all duration-200 group"
@@ -841,102 +738,70 @@ export default function Enquiries() {
                     </table>
                   </div>
 
+                  {/* Pagination - Desktop */}
+                  {totalCount !== undefined && totalCount > 0 && (
+                    <div className="hidden lg:flex flex-col items-center justify-center gap-4 px-6 py-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} enquiries
+                      </div>
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious 
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage > 1) setCurrentPage(currentPage - 1);
+                              }}
+                              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 7) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 4) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 3) {
+                              pageNum = totalPages - 6 + i;
+                            } else {
+                              pageNum = currentPage - 3 + i;
+                            }
+                            
+                            return (
+                              <PaginationItem key={pageNum}>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setCurrentPage(pageNum);
+                                  }}
+                                  isActive={currentPage === pageNum}
+                                  className="cursor-pointer"
+                                >
+                                  {pageNum}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          })}
+                          <PaginationItem>
+                            <PaginationNext
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+                              }}
+                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  )}
+
                   {/* Mobile Card View - Enhanced for touch */}
                   <div className="lg:hidden space-y-3 pb-20">
-                    {(enquiries || []).filter(enquiry => {
-                      // Apply same filter logic for mobile view
-                      if (searchQuery.trim()) {
-                        const query = searchQuery.toLowerCase().trim();
-                        const matchesSearch = (
-                          enquiry.enquiryNumber.toLowerCase().includes(query) ||
-                          enquiry.clientName.toLowerCase().includes(query) ||
-                          enquiry.contactNumber.includes(query) ||
-                          (enquiry.email && enquiry.email.toLowerCase().includes(query)) ||
-                          (enquiry.salesperson?.firstName && enquiry.salesperson.firstName.toLowerCase().includes(query)) ||
-                          (enquiry.salesperson?.lastName && enquiry.salesperson.lastName.toLowerCase().includes(query))
-                        );
-                        if (!matchesSearch) return false;
-                      }
-                      
-                      if (statusFilter !== "all" && enquiry.status !== statusFilter) {
-                        return false;
-                      }
-
-                      if (eventTypeFilter !== "all" && enquiry.eventType !== eventTypeFilter) {
-                        return false;
-                      }
-                      
-                      if (dateFilter !== "all" && enquiry.eventDate) {
-                        const eventDate = new Date(enquiry.eventDate);
-                        const today = new Date();
-                        const tomorrow = new Date(today);
-                        tomorrow.setDate(today.getDate() + 1);
-                        
-                        switch (dateFilter) {
-                          case "today":
-                            if (eventDate.toDateString() !== today.toDateString()) return false;
-                            break;
-                          case "tomorrow":
-                            if (eventDate.toDateString() !== tomorrow.toDateString()) return false;
-                            break;
-                          case "this_week":
-                            const weekStart = new Date(today);
-                            weekStart.setDate(today.getDate() - today.getDay());
-                            const weekEnd = new Date(weekStart);
-                            weekEnd.setDate(weekStart.getDate() + 6);
-                            if (eventDate < weekStart || eventDate > weekEnd) return false;
-                            break;
-                          case "next_week":
-                            const nextWeekStart = new Date(today);
-                            nextWeekStart.setDate(today.getDate() + (7 - today.getDay()));
-                            const nextWeekEnd = new Date(nextWeekStart);
-                            nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
-                            if (eventDate < nextWeekStart || eventDate > nextWeekEnd) return false;
-                            break;
-                          case "this_month":
-                            if (eventDate.getMonth() !== today.getMonth() || eventDate.getFullYear() !== today.getFullYear()) return false;
-                            break;
-                          case "next_month":
-                            const nextMonth = new Date(today);
-                            nextMonth.setMonth(today.getMonth() + 1);
-                            if (eventDate.getMonth() !== nextMonth.getMonth() || eventDate.getFullYear() !== nextMonth.getFullYear()) return false;
-                            break;
-                        }
-                      }
-                      
-                      // Follow-up filter (exclude booked enquiries as they don't need follow-ups)
-                      if (followUpFilter === "overdue") {
-                        // Skip booked enquiries - they don't need follow-ups
-                        if (enquiry.status === "booked") return false;
-                        const hasOverdueFollowUp = enquiry.nextFollowUpDate && new Date(enquiry.nextFollowUpDate) < new Date();
-                        if (!hasOverdueFollowUp) return false;
-                      } else if (followUpFilter === "pending") {
-                        // Skip booked enquiries - they don't need follow-ups
-                        if (enquiry.status === "booked") return false;
-                        const hasPendingFollowUp = enquiry.nextFollowUpDate && new Date(enquiry.nextFollowUpDate) >= new Date();
-                        if (!hasPendingFollowUp) return false;
-                      }
-                      
-                      // Salesperson filter
-                      if (salespersonFilter !== "all") {
-                        const enquirySalespersonId = enquiry.salespersonId || enquiry.assignedTo;
-                        if (enquirySalespersonId !== salespersonFilter) return false;
-                      }
-                      
-                      return true;
-                    }).sort((a, b) => {
-                      // Status hierarchy: new → quotation_sent → ongoing → converted → booked
-                      const statusOrder: { [key: string]: number } = {
-                        'new': 1,
-                        'quotation_sent': 2,
-                        'ongoing': 3,
-                        'converted': 4,
-                        'booked': 5,
-                      };
-                      const statusA = statusOrder[a.status || 'new'] || 99;
-                      const statusB = statusOrder[b.status || 'new'] || 99;
-                      return statusA - statusB;
-                    }).map((enquiry) => (
+                    {(enquiries || []).map((enquiry) => (
                       <Card 
                         key={enquiry.id} 
                         className="interactive-card glass-effect border-l-4 border-l-primary shadow-lg group touch-manipulation"
@@ -990,18 +855,6 @@ export default function Enquiries() {
                           </div>
                           
                           <div className="space-y-1.5">
-                            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                              <Phone className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                              <span className="font-medium truncate">{enquiry.contactNumber}</span>
-                              {enquiry.email && (
-                                <>
-                                  <span className="text-muted-foreground/50">•</span>
-                                  <Mail className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                  <span className="truncate">{enquiry.email}</span>
-                                </>
-                              )}
-                            </div>
-                            
                             <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap">
                               <Calendar className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                               <span className="font-medium">{formatDate(enquiry.eventDate)}</span>
@@ -1011,20 +864,19 @@ export default function Enquiries() {
                               <span className="text-muted-foreground/50">•</span>
                               <span>{getEventTypeLabel(enquiry.eventType)}</span>
                               {enquiry.city && (
-                                <>
-                                  <span className="text-muted-foreground/50">•</span>
+                                <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                                   <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                                   <span className="truncate">{enquiry.city}</span>
+                                </div>
+                              )}
+                              {enquiry.salesperson && (enquiry.salesperson.firstName || enquiry.salesperson.lastName) && (
+                                <>
+                                  <span className="text-muted-foreground/50">•</span>
+                                  <Users className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                  <span>Salesperson: {enquiry.salesperson.firstName} {enquiry.salesperson.lastName}</span>
                                 </>
                               )}
                             </div>
-
-                            {enquiry.salesperson && (enquiry.salesperson.firstName || enquiry.salesperson.lastName) && (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <Users className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                <span>Salesperson: {enquiry.salesperson.firstName} {enquiry.salesperson.lastName}</span>
-                              </div>
-                            )}
                             
                             {enquiry.nextFollowUpDate && enquiry.status !== 'booked' && (
                               <div className={`text-xs sm:text-sm py-1.5 px-2 rounded border font-medium ${
@@ -1102,6 +954,67 @@ export default function Enquiries() {
                       </Card>
                     ))}
                   </div>
+
+                  {/* Pagination for Mobile */}
+                  {totalCount !== undefined && totalCount > 0 && (
+                    <div className="lg:hidden flex flex-col items-center justify-center gap-4 px-4 py-4 border-t mt-4">
+                      <div className="text-sm text-muted-foreground text-center">
+                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} enquiries
+                      </div>
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious 
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage > 1) setCurrentPage(currentPage - 1);
+                              }}
+                              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            
+                            return (
+                              <PaginationItem key={pageNum}>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setCurrentPage(pageNum);
+                                  }}
+                                  isActive={currentPage === pageNum}
+                                  className="cursor-pointer"
+                                >
+                                  {pageNum}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          })}
+                          <PaginationItem>
+                            <PaginationNext
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+                              }}
+                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>

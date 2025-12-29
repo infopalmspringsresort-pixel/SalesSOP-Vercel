@@ -319,6 +319,7 @@ export const venueRentalItemSchema = z.object({
 
 // Room Package (simplified) - must be defined before quotationPackageSchema
 export const roomPackageSchema = z.object({
+  eventDate: z.string().optional(), // Date in YYYY-MM-DD format or DD/MM/YYYY (for date-wise room selection)
   category: z.string(), // e.g., "Standard Room", "Deluxe Room"
   rate: z.number(), // Room rate
   numberOfRooms: z.union([z.number().min(1, "Number of rooms must be at least 1"), z.null()]).optional(), // Number of rooms

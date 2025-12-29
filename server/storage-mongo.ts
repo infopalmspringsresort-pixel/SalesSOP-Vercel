@@ -369,7 +369,7 @@ export class MongoStorage implements IStorage {
     return this.toApiFormat({ ...doc, _id: result.insertedId });
   }
 
-  async getEnquiries(filters?: any): Promise<any[]> {
+  async getEnquiries(filters?: any): Promise<any[] | { data: any[]; total: number; page: number; pageSize: number }> {
     const enquiriesCollection = await getCollection<Enquiry>('enquiries');
     const usersCollection = await getCollection<User>('users');
     
@@ -398,10 +398,21 @@ export class MongoStorage implements IStorage {
       }
     }
 
-    const enquiries = await enquiriesCollection
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    // Handle pagination
+    const page = filters?.page ? parseInt(filters.page, 10) : undefined;
+    const pageSize = filters?.pageSize ? parseInt(filters.pageSize, 10) : undefined;
+    const skip = page && pageSize ? (page - 1) * pageSize : undefined;
+
+    // Get total count for pagination
+    const total = page !== undefined ? await enquiriesCollection.countDocuments(query) : undefined;
+
+    let enquiriesQuery = enquiriesCollection.find(query).sort({ createdAt: -1 });
+    
+    if (skip !== undefined && pageSize !== undefined) {
+      enquiriesQuery = enquiriesQuery.skip(skip).limit(pageSize);
+    }
+    
+    const enquiries = await enquiriesQuery.toArray();
 
     // Get salesperson details and follow-up status for each enquiry
     const enrichedEnquiries = await Promise.all(
@@ -463,6 +474,16 @@ export class MongoStorage implements IStorage {
         };
       })
     );
+
+    // Return paginated response if pagination is requested
+    if (page !== undefined && pageSize !== undefined && total !== undefined) {
+      return {
+        data: enrichedEnquiries,
+        total,
+        page,
+        pageSize,
+      };
+    }
 
     return enrichedEnquiries;
   }
@@ -1206,7 +1227,7 @@ export class MongoStorage implements IStorage {
     };
   }
 
-  async getBookings(filters?: any): Promise<any[]> {
+  async getBookings(filters?: any): Promise<any[] | { data: any[]; total: number; page: number; pageSize: number }> {
     const bookingsCollection = await getCollection<Booking>('bookings');
     const enquiriesCollection = await getCollection<Enquiry>('enquiries');
     const usersCollection = await getCollection<User>('users');
@@ -1239,10 +1260,21 @@ export class MongoStorage implements IStorage {
       }
     }
 
-    const bookings = await bookingsCollection
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    // Handle pagination
+    const page = filters?.page ? parseInt(filters.page, 10) : undefined;
+    const pageSize = filters?.pageSize ? parseInt(filters.pageSize, 10) : undefined;
+    const skip = page && pageSize ? (page - 1) * pageSize : undefined;
+
+    // Get total count for pagination
+    const total = page !== undefined ? await bookingsCollection.countDocuments(query) : undefined;
+
+    let bookingsQuery = bookingsCollection.find(query).sort({ createdAt: -1 });
+    
+    if (skip !== undefined && pageSize !== undefined) {
+      bookingsQuery = bookingsQuery.skip(skip).limit(pageSize);
+    }
+    
+    const bookings = await bookingsQuery.toArray();
 
     // Get enquiry and salesperson details for each booking
     const enrichedBookings = await Promise.all(
@@ -1281,6 +1313,16 @@ export class MongoStorage implements IStorage {
         };
       })
     );
+
+    // Return paginated response if pagination is requested
+    if (page !== undefined && pageSize !== undefined && total !== undefined) {
+      return {
+        data: enrichedBookings,
+        total,
+        page,
+        pageSize,
+      };
+    }
 
     return enrichedBookings;
   }
@@ -1506,9 +1548,10 @@ export class MongoStorage implements IStorage {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    // Active enquiries (not lost, not closed)
+    // Active enquiries (not lost, not closed, not booked)
+    // Once enquiry status is "booked", it should not count as active enquiry
     const activeEnquiries = await enquiriesCollection.countDocuments({
-      status: { $nin: ['lost', 'closed'] }
+      status: { $nin: ['lost', 'closed', 'booked'] }
     });
 
     // Confirmed bookings

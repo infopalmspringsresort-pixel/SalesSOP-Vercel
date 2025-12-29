@@ -23,44 +23,109 @@ export async function generateQuotationPDF(quotation: any): Promise<Buffer> {
     ],
   };
 
-  // For serverless environments, try to use system Chrome or Puppeteer's bundled Chrome
+  // For serverless environments, configure Chrome path
   if (isProduction) {
-    // First, try to use Puppeteer's bundled Chrome (if installed via npx puppeteer browsers install)
-    try {
-      const puppeteerCachePath = process.env.PUPPETEER_CACHE_DIR || 
-        (process.env.HOME ? path.join(process.env.HOME, '.cache', 'puppeteer') : null) ||
-        (process.env.RENDER ? '/opt/render/.cache/puppeteer' : null) ||
-        '/tmp/puppeteer-cache';
-      
-      // Try to find Chrome in Puppeteer's cache directory
-      if (puppeteerCachePath && fs.existsSync(puppeteerCachePath)) {
-        const chromeDirs = fs.readdirSync(puppeteerCachePath, { withFileTypes: true })
-          .filter(dirent => dirent.isDirectory())
-          .map(dirent => dirent.name);
-        
-        for (const dir of chromeDirs) {
-          const chromePath = path.join(puppeteerCachePath, dir, 'chrome-linux64', 'chrome');
-          if (fs.existsSync(chromePath)) {
-            launchOptions.executablePath = chromePath;
-            console.log(`[PDF] Using Puppeteer Chrome at: ${chromePath}`);
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[PDF] Could not find Puppeteer bundled Chrome:', e);
+    // Set cache directory for Render
+    if (process.env.RENDER) {
+      launchOptions.userDataDir = '/tmp/puppeteer-cache';
+      // Set the cache directory environment variable for Puppeteer
+      process.env.PUPPETEER_CACHE_DIR = '/opt/render/.cache/puppeteer';
     }
 
-    // If Puppeteer Chrome not found, try system Chrome
+    // Try to find Chrome executable
+    // Method 1: Use Puppeteer's executablePath (if Chrome was installed via puppeteer browsers install)
+    try {
+      const puppeteerExecutablePath = puppeteer.executablePath();
+      if (puppeteerExecutablePath && fs.existsSync(puppeteerExecutablePath)) {
+        launchOptions.executablePath = puppeteerExecutablePath;
+        console.log(`[PDF] Using Puppeteer's detected Chrome at: ${puppeteerExecutablePath}`);
+      }
+    } catch (e) {
+      console.warn('[PDF] Puppeteer.executablePath() failed:', e);
+    }
+
+    // Method 2: Try common cache locations
     if (!launchOptions.executablePath) {
-      const possibleChromePaths = [
+      // First, try the known Render path structure from build logs
+      const renderChromePath = '/opt/render/.cache/puppeteer/chrome/linux-142.0.7444.175/chrome-linux64/chrome';
+      if (fs.existsSync(renderChromePath)) {
+        launchOptions.executablePath = renderChromePath;
+        console.log(`[PDF] Using Render Chrome at: ${renderChromePath}`);
+      }
+      
+      // If not found, search common cache locations
+      if (!launchOptions.executablePath) {
+        const possibleCachePaths = [
+          process.env.PUPPETEER_CACHE_DIR,
+          process.env.HOME ? path.join(process.env.HOME, '.cache', 'puppeteer') : null,
+          '/opt/render/.cache/puppeteer',
+          '/tmp/.cache/puppeteer',
+          '/root/.cache/puppeteer',
+        ].filter(Boolean);
+
+        for (const cachePath of possibleCachePaths) {
+        try {
+          if (cachePath && fs.existsSync(cachePath)) {
+            // Look for Chrome in the cache directory
+            // Structure can be: cachePath/chrome/linux-VERSION/chrome-linux64/chrome
+            // Or: cachePath/chrome/chrome-linux64/chrome
+            const findChromeRecursive = (dir: string, depth: number = 0): string | null => {
+              if (depth > 3) return null; // Prevent infinite recursion
+              
+              try {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                
+                // First, check if chrome executable is directly here
+                const chromePath = path.join(dir, 'chrome');
+                if (fs.existsSync(chromePath) && fs.statSync(chromePath).isFile()) {
+                  return chromePath;
+                }
+                
+                // Check for chrome-linux64/chrome structure
+                const chromeLinux64Path = path.join(dir, 'chrome-linux64', 'chrome');
+                if (fs.existsSync(chromeLinux64Path)) {
+                  return chromeLinux64Path;
+                }
+                
+                // Recursively search subdirectories
+                for (const entry of entries) {
+                  if (entry.isDirectory()) {
+                    const found = findChromeRecursive(path.join(dir, entry.name), depth + 1);
+                    if (found) return found;
+                  }
+                }
+              } catch (e) {
+                // Continue searching
+              }
+              return null;
+            };
+            
+            const foundPath = findChromeRecursive(cachePath);
+            if (foundPath) {
+              launchOptions.executablePath = foundPath;
+              console.log(`[PDF] Found Chrome in cache at: ${foundPath}`);
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`[PDF] Error searching cache path ${cachePath}:`, e);
+        }
+        }
+      }
+    }
+
+    // Method 3: Try system Chrome/Chromium
+    if (!launchOptions.executablePath) {
+      const systemChromePaths = [
         '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/opt/google/chrome/chrome',
+        '/snap/bin/chromium',
       ];
 
-      for (const chromePath of possibleChromePaths) {
+      for (const chromePath of systemChromePaths) {
         try {
           if (fs.existsSync(chromePath)) {
             launchOptions.executablePath = chromePath;
@@ -68,14 +133,17 @@ export async function generateQuotationPDF(quotation: any): Promise<Buffer> {
             break;
           }
         } catch (e) {
-          // Continue checking other paths
+          // Continue checking
         }
       }
     }
 
-    // Set cache directory for Render
-    if (process.env.RENDER) {
-      launchOptions.userDataDir = '/tmp/puppeteer-cache';
+    // Log if we still don't have a path
+    if (!launchOptions.executablePath) {
+      console.warn('[PDF] Could not find Chrome executable. Puppeteer will try to download it.');
+      console.warn('[PDF] PUPPETEER_CACHE_DIR:', process.env.PUPPETEER_CACHE_DIR);
+      console.warn('[PDF] HOME:', process.env.HOME);
+      console.warn('[PDF] RENDER:', process.env.RENDER);
     }
   }
 

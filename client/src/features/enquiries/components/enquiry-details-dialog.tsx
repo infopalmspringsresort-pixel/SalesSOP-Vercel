@@ -21,8 +21,8 @@ import BookingForm from "../../bookings/components/booking-form";
 import { getStatusColor, getStatusLabel, getValidNextStatuses } from "@/lib/status-utils";
 import EnquirySessionManagement from "@/components/ui/enquiry-session-management";
 import { TimePicker } from "@/components/ui/time-picker";
-import QuotationForm from "../../quotations/components/quotation-form";
-import QuotationHistory from "../../quotations/components/quotation-history";
+// import QuotationForm from "../../quotations/components/quotation-form";
+// import QuotationHistory from "../../quotations/components/quotation-history";
 import EnquiryTransferDialog from "@/components/enquiry-transfer-dialog";
 import { z } from "zod";
 
@@ -93,8 +93,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
   const [showBookingForm, setShowBookingForm] = useState(false);
 
   // Quotation management state
-  const [showQuotationForm, setShowQuotationForm] = useState(false);
-  const [editingQuotation, setEditingQuotation] = useState<any>(null);
+  // const [showQuotationForm, setShowQuotationForm] = useState(false);
+  // const [editingQuotation, setEditingQuotation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<string>("details");
   
   // Reset activeTab to "details" when enquiry dialog opens
@@ -1032,16 +1032,16 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
 {/* Edit enquiry button hidden per user request */}
 
         <Tabs defaultValue="details" value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-9 sm:h-10">
+          <TabsList className="grid w-full grid-cols-3 h-9 sm:h-10">
             <TabsTrigger value="details" data-testid="tab-enquiry-details" className="text-xs sm:text-sm">
               Details
             </TabsTrigger>
             <TabsTrigger value="sessions" data-testid="tab-sessions" className="text-xs sm:text-sm">
               Sessions
             </TabsTrigger>
-            <TabsTrigger value="quotations" data-testid="tab-quotations" className="text-xs sm:text-sm">
+            {/* <TabsTrigger value="quotations" data-testid="tab-quotations" className="text-xs sm:text-sm">
               Quotations
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger value="followups" data-testid="tab-follow-ups" className="text-xs sm:text-sm">
               Follow-ups
             </TabsTrigger>
@@ -1287,7 +1287,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                     </div>
                   )}
 
-                  {enquiry.numberOfRooms !== undefined && enquiry.numberOfRooms !== null && (
+                  {/* {enquiry.numberOfRooms !== undefined && enquiry.numberOfRooms !== null && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -1295,7 +1295,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                       </div>
                       <span className="text-sm sm:ml-0">{enquiry.numberOfRooms}</span>
                     </div>
-                  )}
+                  )} */}
 
                   {(enquiry as any).tentativeDates && Array.isArray((enquiry as any).tentativeDates) && (enquiry as any).tentativeDates.length > 0 && (
                     <div>
@@ -1836,7 +1836,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
           </Dialog>
 
           {/* Quotations Tab */}
-          <TabsContent value="quotations" className="space-y-4 min-h-[500px]">
+          {/* <TabsContent value="quotations" className="space-y-4 min-h-[500px]">
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-semibold">Quotation Management</h3>
@@ -1855,7 +1855,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
             </div>
 
             {/* Quotation History Component */}
-            {enquiry && (
+            {/* {enquiry && (
               <QuotationHistory 
                 enquiryId={enquiry.id} 
                 onEditQuotation={(quotation) => {
@@ -1864,7 +1864,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                 }}
               />
             )}
-          </TabsContent>
+          </TabsContent> */}
 
           <TabsContent value="followups" className="space-y-4 min-h-[500px]">
             <div className="flex justify-between items-center">
@@ -2101,8 +2101,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
 
         {/* Status Change Dialog */}
         <Dialog open={showStatusChange} onOpenChange={setShowStatusChange}>
-          <DialogContent className="max-w-md w-[98vw] sm:w-[95vw] md:w-full touch-manipulation">
-            <DialogHeader className="space-y-2 pb-4">
+          <DialogContent className="max-w-md w-[98vw] sm:w-[95vw] md:w-full touch-manipulation p-4 sm:p-6">
+            <DialogHeader className="space-y-2 pb-3 sm:pb-4">
               <DialogTitle className="text-lg">Change Enquiry Status</DialogTitle>
               <DialogDescription className="text-sm">
                 Update the status of this enquiry
@@ -2113,12 +2113,12 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
               <div>
                 <Label htmlFor="status">New Status</Label>
                 <Select value={newStatus} onValueChange={setNewStatus}>
-                  <SelectTrigger data-testid="select-status">
+                  <SelectTrigger data-testid="select-status" className="w-full min-h-[44px] touch-manipulation">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-50">
                     {validStatusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
+                      <SelectItem key={option.value} value={option.value} className="min-h-[44px] cursor-pointer">
                         {option.label}
                       </SelectItem>
                     ))}
@@ -2131,17 +2131,17 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                   <div>
                     <Label htmlFor="lossReason">Loss Reason *</Label>
                     <Select value={lossReason} onValueChange={setLossReason}>
-                      <SelectTrigger data-testid="select-loss-reason">
+                      <SelectTrigger data-testid="select-loss-reason" className="w-full min-h-[44px] touch-manipulation">
                         <SelectValue placeholder="Select loss reason" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="price_budget_mismatch">Price too high / Budget mismatch</SelectItem>
-                        <SelectItem value="venue_not_available">Venue not available on required date</SelectItem>
-                        <SelectItem value="chose_competitor">Chose competitor venue</SelectItem>
-                        <SelectItem value="client_unresponsive">Client unresponsive / Not reachable</SelectItem>
-                        <SelectItem value="requirements_changed">Requirements changed / Event cancelled by client</SelectItem>
-                        <SelectItem value="duplicate_invalid">Duplicate / Invalid enquiry</SelectItem>
-                        <SelectItem value="other">Other (with notes)</SelectItem>
+                      <SelectContent className="z-50">
+                        <SelectItem value="price_budget_mismatch" className="min-h-[44px] cursor-pointer">Price too high / Budget mismatch</SelectItem>
+                        <SelectItem value="venue_not_available" className="min-h-[44px] cursor-pointer">Venue not available on required date</SelectItem>
+                        <SelectItem value="chose_competitor" className="min-h-[44px] cursor-pointer">Chose competitor venue</SelectItem>
+                        <SelectItem value="client_unresponsive" className="min-h-[44px] cursor-pointer">Client unresponsive / Not reachable</SelectItem>
+                        <SelectItem value="requirements_changed" className="min-h-[44px] cursor-pointer">Requirements changed / Event cancelled by client</SelectItem>
+                        <SelectItem value="duplicate_invalid" className="min-h-[44px] cursor-pointer">Duplicate / Invalid enquiry</SelectItem>
+                        <SelectItem value="other" className="min-h-[44px] cursor-pointer">Other (with notes)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2155,6 +2155,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                         placeholder="Please provide more details..."
                         data-testid="textarea-loss-reason-notes"
                         rows={3}
+                        className="w-full"
                       />
                     </div>
                   )}
@@ -2170,13 +2171,14 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                     onChange={(e) => setClosureReason(e.target.value)}
                     placeholder="Enter reason for closing this enquiry"
                     data-testid="input-closure-reason"
+                    className="w-full min-h-[44px] touch-manipulation"
                   />
                 </div>
               )}
 
               {newStatus === 'quotation_sent' && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="followUpDate">Follow-up Date *</Label>
                       <Input
@@ -2186,6 +2188,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                         onChange={(e) => setFollowUpDate(e.target.value)}
                         min={new Date().toISOString().split('T')[0]}
                         data-testid="input-follow-up-date"
+                        className="w-full"
                       />
                     </div>
                     <div>
@@ -2206,6 +2209,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                       onChange={(e) => setFollowUpNotes(e.target.value)}
                       placeholder="Notes for follow-up (optional)"
                       data-testid="input-follow-up-notes"
+                      className="w-full"
                     />
                   </div>
                 </>
@@ -2383,7 +2387,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
     )}
 
     {/* Quotation Form Dialog */}
-    {enquiry && (
+    {/* {enquiry && (
       <QuotationForm 
         enquiry={enquiry}
         open={showQuotationForm}
@@ -2405,7 +2409,7 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
           setActiveTab("quotations");
         }}
       />
-    )}
+    )} */}
 
     {/* Transfer Dialog */}
     <EnquiryTransferDialog

@@ -18,9 +18,9 @@ import { ReportsPage } from "@/features/reports";
 import { SettingsPage } from "@/features/settings";
 import { AdminRoute } from "@/components/AdminRoute";
 import CalendarPage from "@/pages/calendar";
-import MenuManagement from "@/pages/menu-management";
-import RoomManagement from "@/pages/room-management";
-import QuotationPackageManagement from "@/pages/quotation-package-management";
+// import MenuManagement from "@/pages/menu-management";
+// import RoomManagement from "@/pages/room-management";
+// import QuotationPackageManagement from "@/pages/quotation-package-management";
 import PublicEnquiryPage from "@/pages/public-enquiry";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -54,9 +54,9 @@ function Router() {
           <Route path="/calendar" component={CalendarPage} />
           <Route path="/beo-management" component={BeoManagementPage} />
           <Route path="/reports" component={ReportsPage} />
-          <Route path="/menu-management" component={(props) => <AdminRoute component={MenuManagement} {...props} />} />
-          <Route path="/room-management" component={(props) => <AdminRoute component={RoomManagement} {...props} />} />
-          <Route path="/quotation-package-management" component={(props) => <AdminRoute component={QuotationPackageManagement} {...props} />} />
+          {/* <Route path="/menu-management" component={(props) => <AdminRoute component={MenuManagement} {...props} />} /> */}
+          {/* <Route path="/room-management" component={(props) => <AdminRoute component={RoomManagement} {...props} />} /> */}
+          {/* <Route path="/quotation-package-management" component={(props) => <AdminRoute component={QuotationPackageManagement} {...props} />} /> */}
           <Route path="/settings" component={(props) => <AdminRoute component={SettingsPage} {...props} />} />
         </>
       ) : (
@@ -68,9 +68,9 @@ function Router() {
           <Route path="/calendar" component={LoginPage} />
           <Route path="/beo-management" component={LoginPage} />
           <Route path="/reports" component={LoginPage} />
-          <Route path="/menu-management" component={LoginPage} />
-          <Route path="/room-management" component={LoginPage} />
-          <Route path="/quotation-package-management" component={LoginPage} />
+          {/* <Route path="/menu-management" component={LoginPage} /> */}
+          {/* <Route path="/room-management" component={LoginPage} /> */}
+          {/* <Route path="/quotation-package-management" component={LoginPage} /> */}
           <Route path="/settings" component={LoginPage} />
         </>
       )}

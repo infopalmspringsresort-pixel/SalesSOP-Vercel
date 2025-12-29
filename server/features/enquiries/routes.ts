@@ -127,8 +127,21 @@ export function registerEnquiryRoutes(app: Express) {
 
   app.get("/api/enquiries", requirePermission('enquiries', 'read'), async (req: any, res) => {
     try {
-      const enquiries = await storage.getEnquiries(req.query);
-      res.json(enquiries);
+      // Extract pagination parameters
+      const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize, 10) : undefined;
+      
+      // If pagination params are provided, use them; otherwise fetch all
+      const filters = {
+        ...req.query,
+        ...(page !== undefined && pageSize !== undefined ? { page, pageSize } : {})
+      };
+      
+      const result = await storage.getEnquiries(filters);
+      
+      // If pagination was requested, result will be an object with data, total, page, pageSize
+      // Otherwise it will be an array
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch enquiries" });
     }

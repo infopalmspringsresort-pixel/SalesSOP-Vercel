@@ -12,10 +12,10 @@ import { registerAuditRoutes } from "./features/audit/routes";
 import { registerMinimalAuditRoutes } from "./features/audit/minimal-routes.js";
 import { registerAuditMonitoringRoutes } from "./features/audit/audit-monitoring";
 import { registerPublicRoutes } from "./features/public/routes";
-import menuRoutes from "./features/menus/routes";
+// import menuRoutes from "./features/menus/routes";
 import roomRoutes from "./features/rooms/routes";
-import quotationRoutes from "./features/quotations/routes";
-import quotationEmailRoutes from "./features/quotations/email-routes";
+// import quotationRoutes from "./features/quotations/routes";
+// import quotationEmailRoutes from "./features/quotations/email-routes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const routesStartTime = Date.now();
@@ -246,10 +246,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAuditMonitoringRoutes(app);
   
   // Register menu, room, and quotation management routes
-  app.use('/api/menus', isAuthenticated, menuRoutes);
-  app.use('/api/rooms', isAuthenticated, roomRoutes);
-  app.use('/api/quotations', isAuthenticated, quotationRoutes);
-  app.use('/api/quotations/email', isAuthenticated, quotationEmailRoutes);
+  // app.use('/api/menus', isAuthenticated, menuRoutes);
+  try {
+    app.use('/api/rooms', isAuthenticated, roomRoutes);
+    console.log('✅ Room routes registered at /api/rooms');
+  } catch (error) {
+    console.error('❌ Failed to register room routes:', error);
+    throw error;
+  }
+  // app.use('/api/quotations', isAuthenticated, quotationRoutes);
+  // app.use('/api/quotations/email', isAuthenticated, quotationEmailRoutes);
   
   const httpServer = createServer(app);
   return httpServer;

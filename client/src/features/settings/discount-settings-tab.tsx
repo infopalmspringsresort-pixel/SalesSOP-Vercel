@@ -119,7 +119,25 @@ export function DiscountSettingsTab() {
               max="100"
               step="0.1"
               value={maxDiscountPercentage}
-              onChange={(e) => setMaxDiscountPercentage(parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                const inputValue = e.target.value;
+                // Allow empty input for better UX while typing
+                if (inputValue === '' || inputValue === '-') {
+                  return;
+                }
+                const numValue = parseFloat(inputValue);
+                // Only update if value is valid
+                if (!isNaN(numValue)) {
+                  // Clamp value between 0 and 100 - prevents values > 100 from being entered
+                  if (numValue > 100) {
+                    setMaxDiscountPercentage(100);
+                  } else if (numValue < 0) {
+                    setMaxDiscountPercentage(0);
+                  } else {
+                    setMaxDiscountPercentage(numValue);
+                  }
+                }
+              }}
               disabled={!isEditing}
             />
             {isEditing && (
