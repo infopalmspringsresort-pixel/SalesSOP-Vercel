@@ -25,7 +25,11 @@ export async function sendQuotationEmail(request: EmailQuotationRequest): Promis
       // Don't pass message - let server use HTML template
     });
     
-    return response;
+    const data = await response.json();
+    return {
+      success: true,
+      ...data
+    };
   } catch (error) {
     return {
       success: false,
@@ -63,7 +67,11 @@ export async function sendQuotationReminder(quotationId: string, recipientEmail:
       recipientEmail,
     });
     
-    return response;
+    const data = await response.json();
+    return {
+      success: true,
+      ...data
+    };
   } catch (error) {
     return {
       success: false,
@@ -80,7 +88,11 @@ export async function sendQuotationFollowUp(quotationId: string, recipientEmail:
       message,
     });
     
-    return response;
+    const data = await response.json();
+    return {
+      success: true,
+      ...data
+    };
   } catch (error) {
     return {
       success: false,

@@ -35,8 +35,11 @@ export function useSessionConflicts({
     if (booking.sessions && booking.sessions.length > 0) {
       booking.sessions.forEach((session: any) => {
         // Check same venue and date
-        if (session.venue === venue && 
-            session.sessionDate.split('T')[0] === date) {
+        const sessionDateStr = typeof session.sessionDate === 'string' 
+          ? session.sessionDate.split('T')[0] 
+          : new Date(session.sessionDate).toISOString().split('T')[0];
+        
+        if (session.venue === venue && sessionDateStr === date) {
           
           // Check time overlap
           const sessionStart = session.startTime;
@@ -53,8 +56,11 @@ export function useSessionConflicts({
       });
     } else {
       // Check legacy bookings without sessions
-      if (booking.hall === venue && 
-          booking.eventDate.split('T')[0] === date) {
+      const eventDateStr = typeof booking.eventDate === 'string'
+        ? booking.eventDate.split('T')[0]
+        : new Date(booking.eventDate).toISOString().split('T')[0];
+      
+      if (booking.hall === venue && eventDateStr === date) {
         
         // Use legacy start/end times or assume full day
         const legacyStart = booking.eventStartTime || "00:00";

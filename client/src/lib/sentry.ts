@@ -9,10 +9,8 @@ export function initializeSentry() {
       integrations: [
         // Browser profiling
         Sentry.browserProfilingIntegration(),
-        // React error boundary
-        Sentry.reactRouterV6BrowserTracingIntegration({
-          useEffect: React.useEffect,
-        }),
+        // React Router v6 browser tracing (if using React Router)
+        // Note: If not using React Router v6, you can remove this integration
         // Performance monitoring
         Sentry.browserTracingIntegration(),
         // Replay sessions for debugging
