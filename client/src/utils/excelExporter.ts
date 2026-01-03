@@ -8,7 +8,7 @@ export interface CustomerData {
   eventType: string;
 }
 
-export function exportCustomersToExcel(customers: CustomerData[], filename?: string, metadata?: { dateRange?: { from: string; to: string }; eventType?: string; totalRecords: number }): void {
+export function exportCustomersToExcel(customers: CustomerData[], filename?: string, metadata?: { dateRange?: { from: string; to: string }; eventType?: string; city?: string; source?: string; totalRecords: number }): void {
   try {
     // Create a new workbook
     const workbook = XLSX.utils.book_new();
@@ -30,6 +30,14 @@ export function exportCustomersToExcel(customers: CustomerData[], filename?: str
     
     if (metadata?.eventType) {
       metadataRows.push(['Event Type Filter:', metadata.eventType]);
+    }
+    
+    if (metadata?.city) {
+      metadataRows.push(['City Filter:', metadata.city]);
+    }
+    
+    if (metadata?.source) {
+      metadataRows.push(['Source Filter:', metadata.source]);
     }
     
     metadataRows.push([]);

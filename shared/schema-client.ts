@@ -88,6 +88,8 @@ export const enquirySchema = z.object({
   status: z.enum(ENQUIRY_STATUSES).default('new'),
   closureReason: z.string().nullable().optional(),
   lostReason: z.string().nullable().optional(),
+  reopenReason: z.string().nullable().optional(),
+  reopenReasonNotes: z.string().nullable().optional(),
   followUpDate: z.date().nullable().optional(),
   notes: z.string().nullable().optional(),
   hasIncompleteFollowUp: z.boolean().optional(),
@@ -116,6 +118,7 @@ export const bookingSchema = z.object({
   id: z.string().optional(),
   bookingNumber: z.string(),
   enquiryId: z.string(),
+  enquiryNumber: z.string().nullable().optional(), // Store enquiry number for quick access
   clientName: z.string(),
   contactNumber: z.string(),
   email: z.string().email().nullable().optional(),

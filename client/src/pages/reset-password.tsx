@@ -51,6 +51,21 @@ export default function ResetPasswordPage() {
     },
     onSuccess: () => {
       setIsSubmitted(true);
+      // If user is logged in, force logout after password reset
+      // The session has been invalidated on the server
+      setTimeout(() => {
+        // Check if user is authenticated and logout if needed
+        fetch('/api/auth/user')
+          .then(res => {
+            if (res.ok) {
+              // User is still logged in, force logout
+              window.location.href = '/api/logout';
+            }
+          })
+          .catch(() => {
+            // If check fails, assume not logged in
+          });
+      }, 1000);
     },
     onError: (error: Error) => {
       toast({

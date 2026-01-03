@@ -27,28 +27,18 @@ import {
   X
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { addDays, format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { addDays, format, subDays } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Cell, Pie } from "recharts";
 import LazyWrapper from "@/components/LazyWrapper";
 
 export default function Reports() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
-  // Initialize with current month (start to end)
-  const getCurrentMonthRange = () => {
-    const today = new Date();
-    const start = startOfMonth(today);
-    const end = endOfMonth(today);
-    // Set time to start/end of day for proper filtering
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    return {
-      from: start,
-      to: end,
-    };
-  };
-
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(getCurrentMonthRange());
+  // Initialize with no date range (show all data by default)
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined,
+  });
   const [activeTab, setActiveTab] = useState("enquiry-pipeline");
   const [cityFilter, setCityFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");

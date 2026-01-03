@@ -80,6 +80,8 @@ export default function EnquirySessionManagement({
   singleSessionMode = false
 }: EnquirySessionManagementProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Track which sessions are using custom dates (not from event dates)
+  const [customDateSessions, setCustomDateSessions] = useState<Set<string>>(new Set());
   
   const { data: venues = [], isLoading: venuesLoading, isError: venuesError } = useVenues();
 
@@ -127,6 +129,27 @@ export default function EnquirySessionManagement({
       .filter((dateOption): dateOption is { value: string; label: string } => Boolean(dateOption));
   }, [eventDates]);
 
+  // Auto-detect sessions with dates outside event dates and mark them as custom
+  useEffect(() => {
+    if (parsedEventDates.length === 0) return;
+    
+    const eventDateValues = new Set(parsedEventDates.map(d => d.value));
+    setCustomDateSessions(prev => {
+      const newSet = new Set(prev);
+      sessions.forEach(session => {
+        if (!session.sessionDate) return;
+        const sessionDateStr = session.sessionDate instanceof Date 
+          ? session.sessionDate.toISOString().split('T')[0]
+          : new Date(session.sessionDate).toISOString().split('T')[0];
+        
+        if (!eventDateValues.has(sessionDateStr)) {
+          newSet.add(session.id);
+        }
+      });
+      return newSet;
+    });
+  }, [sessions, parsedEventDates]);
+
   const getDefaultSessionDate = () => {
     if (parsedEventDates.length > 0) {
       return new Date(parsedEventDates[0].value);
@@ -159,6 +182,12 @@ export default function EnquirySessionManagement({
 
   const removeSession = (sessionId: string) => {
     setSessions(sessions.filter(s => s.id !== sessionId));
+    // Clean up custom date tracking
+    setCustomDateSessions(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(sessionId);
+      return newSet;
+    });
   };
 
   const updateSession = (sessionId: string, field: keyof z.infer<typeof sessionSchema>, value: unknown) => {
@@ -393,40 +422,106 @@ export default function EnquirySessionManagement({
               <Label htmlFor={`sessionDate-${session.id}`}>Session Date *</Label>
               {parsedEventDates.length > 0 ? (
                 <>
-                  <Select
-                    value={session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate.toISOString().split('T')[0] : new Date(session.sessionDate).toISOString().split('T')[0]) : ""}
-                    onValueChange={(value) => updateSession(session.id, 'sessionDate', new Date(value))}
-                    disabled={disabled}
-                  >
-                    <SelectTrigger id={`sessionDate-${session.id}`}>
-                      <SelectValue placeholder="Select session date" />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      {parsedEventDates.map((dateOption, index) => (
-                        <SelectItem key={dateOption.value} value={dateOption.value}>
-                          Day {index + 1} • {dateOption.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({eventDuration} {eventDuration > 1 ? "days" : "day"})
-                  </p>
+                  {customDateSessions.has(session.id) ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`sessionDate-${session.id}`}
+                          type="date"
+                          value={session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate.toISOString().split('T')[0] : new Date(session.sessionDate).toISOString().split('T')[0]) : ""}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateSession(session.id, 'sessionDate', new Date(e.target.value));
+                            }
+                          }}
+                          disabled={disabled}
+                          className="flex-1 font-medium"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCustomDateSessions(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(session.id);
+                              return newSet;
+                            });
+                            // Reset to first event date when switching back
+                            if (parsedEventDates.length > 0) {
+                              updateSession(session.id, 'sessionDate', new Date(parsedEventDates[0].value));
+                            }
+                          }}
+                          disabled={disabled}
+                        >
+                          Use Event Date
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        📅 Custom date selected. You can change it above or switch back to event dates.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <Select
+                        value={session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate.toISOString().split('T')[0] : new Date(session.sessionDate).toISOString().split('T')[0]) : ""}
+                        onValueChange={(value) => {
+                          if (value === "custom") {
+                            // Switch to custom date input
+                            setCustomDateSessions(prev => new Set(prev).add(session.id));
+                            // Set to today's date or keep current if valid
+                            const currentDate = session.sessionDate instanceof Date ? session.sessionDate : (session.sessionDate ? new Date(session.sessionDate) : null);
+                            if (!currentDate || isNaN(currentDate.getTime())) {
+                              updateSession(session.id, 'sessionDate', new Date());
+                            }
+                            // Note: Date input will be shown, user can select date there
+                          } else {
+                            // Regular event date selected
+                            setCustomDateSessions(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(session.id);
+                              return newSet;
+                            });
+                            updateSession(session.id, 'sessionDate', new Date(value));
+                          }
+                        }}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger id={`sessionDate-${session.id}`}>
+                          <SelectValue placeholder="Select session date" />
+                        </SelectTrigger>
+                        <SelectContent position="popper">
+                          {parsedEventDates.map((dateOption, index) => (
+                            <SelectItem key={dateOption.value} value={dateOption.value}>
+                              Day {index + 1} • {dateOption.label}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">
+                            📅 Custom Date
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({eventDuration} {eventDuration > 1 ? "days" : "day"})
+                      </p>
+                    </>
+                  )}
                 </>
               ) : (
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                  <Input
-                    id={`sessionDate-${session.id}`}
-                    type="date"
-                    value={session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate.toISOString().split('T')[0] : new Date(session.sessionDate).toISOString().split('T')[0]) : ""}
-                    onChange={(e) => updateSession(session.id, 'sessionDate', new Date(e.target.value))}
-                    min={eventStartDate}
-                    max={eventEndDate}
-                    disabled={disabled}
-                    className="pl-10 font-medium"
-                  />
-                </div>
+                <Input
+                  id={`sessionDate-${session.id}`}
+                  type="date"
+                  value={session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate.toISOString().split('T')[0] : new Date(session.sessionDate).toISOString().split('T')[0]) : ""}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      updateSession(session.id, 'sessionDate', new Date(e.target.value));
+                    }
+                  }}
+                  min={eventStartDate}
+                  max={eventEndDate}
+                  disabled={disabled}
+                  className="font-medium"
+                />
               )}
             </div>
 

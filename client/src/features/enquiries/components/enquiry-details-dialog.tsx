@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { type Enquiry } from "@shared/schema-client";
+import { canEditResource } from "@/utils/permissions";
 import { apiRequest } from "@/lib/queryClient";
 import { Calendar, Phone, Mail, Users, MapPin, FileText, Plus, Edit, Clock, CheckCircle, AlertCircle, Trash2, ArrowRightLeft } from "lucide-react";
 import { format } from "date-fns";
@@ -343,14 +344,41 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
       const responseData = await response.json();
       return { ...responseData, isDelete };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast({
         title: "Success",
         description: data.isDelete ? "Session deleted successfully" : "Sessions updated successfully",
       });
+      
+      // Update local sessions state immediately with the saved data
+      // This ensures the UI shows the changes right away before the refetch completes
+      if (!data.isDelete && variables.updatedSessions) {
+        const updatedSessions = variables.updatedSessions.map((session: any) => ({
+          ...session,
+          id: session.id || Math.random().toString(36).substr(2, 9),
+          sessionDate: session.sessionDate instanceof Date 
+            ? session.sessionDate 
+            : new Date(session.sessionDate)
+        }));
+        setSessions(updatedSessions);
+      }
+      
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
       setIsEditingSessions(false); // Exit edit mode after successful save
       setEditingSessionId(null); // Reset which session is being edited
       setEditingSessionData(null); // Clear editing data
@@ -483,19 +511,23 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
-      // Invalidate dashboard follow-up queries to sync with main dashboard
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/follow-ups"] });
-      // Force invalidate all queries that contain follow-up data
-      queryClient.getQueryCache().getAll().forEach(query => {
-        const key = query.queryKey.join('/');
-        if (key.includes('follow-up') || key.includes('enquiries')) {
-          queryClient.invalidateQueries({ queryKey: query.queryKey });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
         }
       });
-      // Force refetch to update dashboard immediately
-      queryClient.refetchQueries({ queryKey: ["/api/follow-ups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
       setShowFollowUpForm(false);
       setNewFollowUpDate('');
       setNewFollowUpTime('12:00');
@@ -524,20 +556,23 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/enquiries'] });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
-      // Invalidate bookings to show newly created bookings
-      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
-      // Invalidate dashboard metrics for updated counts
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/follow-ups'] });
-      // Force invalidate all queries that contain enquiry data to refresh everything
-      queryClient.getQueryCache().getAll().forEach(query => {
-        const key = query.queryKey.join('/');
-        if (key.includes('enquiries') || key.includes('follow-up') || key.includes('bookings')) {
-          queryClient.invalidateQueries({ queryKey: query.queryKey });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/bookings') || key.startsWith('/api/follow-ups'));
         }
       });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/bookings') || key.startsWith('/api/follow-ups'));
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ['/api/dashboard/metrics'] });
       setShowStatusChange(false);
       setNewStatus('');
       setClosureReason('');
@@ -673,10 +708,23 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
-      // Invalidate dashboard follow-up queries to sync with main dashboard
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/follow-ups"] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({
         title: "Success",
         description: "Follow-up marked as completed",
@@ -692,9 +740,23 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/enquiries'] });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ['/api/dashboard/metrics'] });
       setShowReopenDialog(false);
       setReopenReason('');
       setReopenNotes('');
@@ -724,7 +786,20 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
       toast({
         title: "Success",
         description: "Enquiry accepted successfully",
@@ -757,11 +832,23 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/follow-ups"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      // Force immediate refetch to update dashboard counts
-      queryClient.refetchQueries({ queryKey: ["/api/follow-ups"] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-ups`] });
+      queryClient.refetchQueries({ queryKey: [`/api/enquiries/${enquiry?.id}/follow-up-stats`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({
         title: "Success",
         description: "All follow-ups marked as completed",
@@ -1051,24 +1138,37 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
           <div className="flex flex-col sm:flex-row justify-between gap-2">
   {/* Left side (Transfer button) */}
   <div className="flex justify-start w-full sm:w-auto">
-    {((user as any)?.role?.name === 'admin' || 
-      (user as any)?.role?.name === 'manager' || 
-      (user as any)?.role?.name === 'salesperson') && (
+    {(() => {
+      const canEdit = canEditResource(user as any, enquiry);
+      const userRole = (user as any)?.role?.name || (user as any)?.role;
+      
+      if (userRole === 'admin' || userRole === 'manager' || userRole === 'salesperson') {
+        return (
       <Button 
         variant="outline"
         className="flex items-center justify-center gap-2 w-full sm:w-auto" 
         data-testid="button-transfer-enquiry"
         onClick={() => setShowTransferDialog(true)}
         size="sm"
+            disabled={!canEdit}
+            title={!canEdit ? "You can only transfer your own enquiries" : ""}
       >
         <ArrowRightLeft className="w-4 h-4" />
         <span>Transfer</span>
       </Button>
-    )}
+        );
+      }
+      return null;
+    })()}
   </div>
 
   {/* Right side (all other buttons) */}
   <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
+    {(() => {
+      const canEdit = canEditResource(user as any, enquiry);
+      
+      return (
+        <>
     {enquiry.status !== 'booked' && enquiry.status !== 'lost' && (
       <>
         <Button 
@@ -1077,6 +1177,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
           data-testid="button-change-status"
           onClick={() => setShowStatusChange(true)}
           size="sm"
+                disabled={!canEdit}
+                title={!canEdit ? "You can only edit your own enquiries" : ""}
         >
           <Edit className="w-4 h-4" />
           <span className="hidden sm:inline">Change Status</span>
@@ -1092,6 +1194,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
             data-testid="button-accept-enquiry"
             onClick={() => handleAcceptEnquiry()}
             size="sm"
+                  disabled={!canEdit}
+                  title={!canEdit ? "You can only edit your own enquiries" : ""}
           >
             <CheckCircle className="w-4 h-4" />
             <span className="hidden sm:inline">Accept Enquiry</span>
@@ -1106,6 +1210,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
             data-testid="button-convert-to-booking"
             onClick={() => setShowBookingForm(true)}
             size="sm"
+                  disabled={!canEdit}
+                  title={!canEdit ? "You can only edit your own enquiries" : ""}
           >
             <CheckCircle className="w-4 h-4" />
             <span className="hidden sm:inline">Convert to Booking</span>
@@ -1129,6 +1235,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
         data-testid="button-reopen-enquiry"
         onClick={() => setShowReopenDialog(true)}
         size="sm"
+              disabled={!canEdit}
+              title={!canEdit ? "You can only edit your own enquiries" : ""}
       >
         <AlertCircle className="w-4 h-4" />
         <span className="hidden sm:inline">Reopen Enquiry</span>
@@ -1148,6 +1256,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
           }
         }}
         size="sm"
+              disabled={!canEdit}
+              title={!canEdit ? "You can only edit your own enquiries" : ""}
       >
         <Plus className="w-4 h-4" />
         <span className="hidden sm:inline">Create New Enquiry</span>
@@ -1161,6 +1271,9 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
         Status locked after booking
       </div>
     )}
+        </>
+      );
+    })()}
   </div>
 </div>
 
@@ -1351,7 +1464,9 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                   Manage venue sessions and event details
                 </p>
               </div>
-              {enquiry?.status !== 'booked' && enquiry?.status !== 'lost' && (
+              {enquiry?.status !== 'booked' && enquiry?.status !== 'lost' && (() => {
+                const canEdit = canEditResource(user as any, enquiry);
+                return (
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -1376,13 +1491,15 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                       setIsEditingSessions(true); // Enter edit mode
                     }}
                     className="flex items-center gap-2"
-                    disabled={!!editingSessionId} // Disable if already editing a session
+                      disabled={!!editingSessionId || !canEdit} // Disable if already editing a session or can't edit
+                      title={!canEdit ? "You can only edit sessions for your own enquiries" : ""}
                   >
                     <Plus className="w-4 h-4" />
                     Add Session
                   </Button>
                 </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="space-y-4 relative z-10">
@@ -1741,7 +1858,9 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                                         </div>
                                       )}
                                     </div>
-                                    {enquiry?.status !== "booked" && enquiry?.status !== "lost" && (
+                                    {enquiry?.status !== "booked" && enquiry?.status !== "lost" && (() => {
+                                      const canEdit = canEditResource(user as any, enquiry);
+                                      return (
                                       <div className="flex items-center gap-2">
                                         <Button
                                           variant="ghost"
@@ -1765,7 +1884,8 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                                             }
                                           }}
                                           className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                          title="Edit this session"
+                                            title={canEdit ? "Edit this session" : "You can only edit sessions for your own enquiries"}
+                                            disabled={!canEdit}
                                         >
                                           <Edit className="w-4 h-4" />
                                         </Button>
@@ -1791,13 +1911,14 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                                             updateSessionsMutation.mutate({ updatedSessions, isDelete: true });
                                           }}
                                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                          title="Delete session"
-                                          disabled={updateSessionsMutation.isPending}
+                                            title={canEdit ? "Delete session" : "You can only delete sessions for your own enquiries"}
+                                            disabled={updateSessionsMutation.isPending || !canEdit}
                                         >
                                           <Trash2 className="w-4 h-4" />
                                         </Button>
                                       </div>
-                                    )}
+                                      );
+                                    })()}
                                   </div>
                                 </CardContent>
                               </Card>
@@ -1876,14 +1997,21 @@ export default function EnquiryDetailsDialog({ enquiry: initialEnquiry, open, on
                   </p>
                 )}
               </div>
+              {(() => {
+                const canEdit = canEditResource(user as any, enquiry);
+                return (
               <Button
                 onClick={() => setShowFollowUpForm(true)}
                 size="sm"
                 data-testid="button-add-followup"
+                    disabled={!canEdit}
+                    title={!canEdit ? "You can only add follow-ups for your own enquiries" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Follow-up
               </Button>
+                );
+              })()}
             </div>
 
             {/* Follow-up Form */}

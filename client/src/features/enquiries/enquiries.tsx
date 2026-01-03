@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import Sidebar from "@/components/sidebar";
@@ -99,14 +99,63 @@ export default function Enquiries() {
   });
 
   // Handle both paginated and non-paginated responses
-  const enquiries = Array.isArray(enquiriesResponse) ? enquiriesResponse : (enquiriesResponse?.data || []);
+  const rawEnquiries = Array.isArray(enquiriesResponse) ? enquiriesResponse : (enquiriesResponse?.data || []);
   const totalCount = Array.isArray(enquiriesResponse) ? undefined : enquiriesResponse?.total;
   const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : 1;
+
+  // Sort enquiries based on sortBy value
+  const enquiries = useMemo(() => {
+    const sorted = [...rawEnquiries];
+    
+    switch (sortBy) {
+      case 'date':
+        // Sort by creation date (newest first)
+        sorted.sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.enquiryDate).getTime();
+          const dateB = new Date(b.createdAt || b.enquiryDate).getTime();
+          return dateB - dateA; // Newest first
+        });
+        break;
+      case 'date-oldest':
+        // Sort by creation date (oldest first)
+        sorted.sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.enquiryDate).getTime();
+          const dateB = new Date(b.createdAt || b.enquiryDate).getTime();
+          return dateA - dateB; // Oldest first
+        });
+        break;
+      case 'status':
+        // Sort by status in priority order: new -> quotation_sent -> ongoing -> converted -> booked -> cancelled/closed/lost
+        // Note: Status values use underscores (quotation_sent), and cancelled might be 'closed' or 'lost'
+        const statusOrder = ['new', 'quotation_sent', 'ongoing', 'converted', 'booked', 'cancelled', 'closed', 'lost'];
+        sorted.sort((a, b) => {
+          const statusA = (a.status || '').toLowerCase();
+          const statusB = (b.status || '').toLowerCase();
+          const indexA = statusOrder.indexOf(statusA);
+          const indexB = statusOrder.indexOf(statusB);
+          
+          // If status not in order list, place at the end
+          if (indexA === -1 && indexB === -1) {
+            return statusA.localeCompare(statusB);
+          }
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+          
+          return indexA - indexB;
+        });
+        break;
+      default:
+        // Default: no sorting (or keep original order)
+        break;
+    }
+    
+    return sorted;
+  }, [rawEnquiries, sortBy]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, followUpFilter, dateFilter, eventTypeFilter, salespersonFilter]);
+  }, [searchQuery, statusFilter, followUpFilter, dateFilter, eventTypeFilter, salespersonFilter, sortBy]);
 
   // Handle URL search parameters
   useEffect(() => {
@@ -165,8 +214,20 @@ export default function Enquiries() {
       
       if (response.ok) {
         // Invalidate queries to refresh the enquiry list
-        queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+        queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+            return typeof key === 'string' && key.startsWith('/api/enquiries');
+          }
+        });
         queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiry.id}`] });
+        // Force immediate refetch to update UI
+        queryClient.refetchQueries({ 
+          predicate: (query) => {
+            const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+            return typeof key === 'string' && key.startsWith('/api/enquiries');
+          }
+        });
         
         toast({
           title: "Success",
@@ -249,13 +310,25 @@ export default function Enquiries() {
     apiRequest("POST", "/api/follow-ups", followUpHistoryData)
       .then(() => {
         // Invalidate and refetch follow-up related queries after creating the follow-up history
-        queryClient.invalidateQueries({ queryKey: ["/api/follow-ups"] });
         queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${followUpEnquiry.id}/follow-ups`] });
         queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${followUpEnquiry.id}/follow-up-stats`] });
+        queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+            return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+          }
+        });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
-        // Force refetch to update dashboard immediately
-        queryClient.refetchQueries({ queryKey: ["/api/follow-ups"] });
+        // Force immediate refetch to update UI
+        queryClient.refetchQueries({ queryKey: [`/api/enquiries/${followUpEnquiry.id}/follow-ups`] });
+        queryClient.refetchQueries({ queryKey: [`/api/enquiries/${followUpEnquiry.id}/follow-up-stats`] });
+        queryClient.refetchQueries({ 
+          predicate: (query) => {
+            const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+            return typeof key === 'string' && (key.startsWith('/api/enquiries') || key.startsWith('/api/follow-ups'));
+          }
+        });
+        queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
         
         toast({
           title: "Success",
@@ -355,7 +428,18 @@ export default function Enquiries() {
           {/* Unassigned Enquiries Section */}
           <UnassignedEnquiries onClaim={() => {
             // Refresh enquiries when one is claimed
-            queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+            queryClient.invalidateQueries({ 
+              predicate: (query) => {
+                const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+                return typeof key === 'string' && key.startsWith('/api/enquiries');
+              }
+            });
+            queryClient.refetchQueries({ 
+              predicate: (query) => {
+                const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+                return typeof key === 'string' && key.startsWith('/api/enquiries');
+              }
+            });
           }} />
           
           <Card className="shadow-lg border-0">
@@ -548,32 +632,8 @@ export default function Enquiries() {
                           key={enquiry.id} 
                           className="border-b border-border hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all duration-200 group"
                           onClick={() => {
-                            // Check if user can view enquiry details
-                            const userRole = (user as any)?.role?.name || (user as any)?.role;
-                            const userId = (user as any)?.id || (user as any)?._id;
-                            const isOwner = enquiry.salespersonId === userId || enquiry.createdBy === userId;
-                            
-                            // Permission rules:
-                            // Staff: Cannot open any enquiry modal
-                            // Admin: Can open any enquiry modal
-                            // Manager/Salesperson: Can open only their own enquiries
-                            if (userRole === 'staff') {
-                              toast({
-                                title: "Access Restricted",
-                                description: "Staff users cannot view enquiry details.",
-                                variant: "destructive",
-                              });
-                              return;
-                            } else if ((userRole === 'manager' || userRole === 'salesperson') && !isOwner) {
-                              toast({
-                                title: "Access Restricted",
-                                description: "You can only view details of enquiries you own.",
-                                variant: "destructive",
-                              });
-                              return;
-                            }
-                            // Admin can access all enquiries (no restriction needed)
-                            
+                            // Allow all authenticated users to view enquiry details
+                            // Actions will be restricted in the details dialog
                             setSelectedEnquiry(enquiry);
                             setShowEnquiryDetails(true);
                           }}
@@ -667,6 +727,7 @@ export default function Enquiries() {
                                 const userRole = (user as any)?.role?.name || (user as any)?.role;
                                 const userId = (user as any)?.id || (user as any)?._id;
                                 const isOwner = enquiry.salespersonId === userId || enquiry.createdBy === userId;
+                                const canEdit = userRole === 'admin' || (userRole !== 'staff' && isOwner);
                                 
                                 // Staff: No actions allowed
                                 if (userRole === 'staff') {
@@ -675,21 +736,7 @@ export default function Enquiries() {
                                   );
                                 }
                                 
-                                // Salespeople/Managers: Can only act on their own enquiries
-                                if (userRole === 'salesperson' || userRole === 'manager') {
-                                  if (!isOwner) {
-                                    return (
-                                      <span className="text-sm text-muted-foreground">No actions</span>
-                                    );
-                                  }
-                                }
-                                
-                                // Admin: Full rights on all enquiries
-                                if (userRole === 'admin') {
-                                  // Admin can do everything
-                                }
-                                
-                                // Show action buttons for authorized users
+                                // Show action buttons - disabled for non-owners
                                 return (
                                   <>
                                     {/* Claim Enquiry Button for unassigned enquiries */}
@@ -711,18 +758,27 @@ export default function Enquiries() {
                                       </Button>
                                     )}
                                     
-                                    {/* Follow-up Button - Only for authorized users */}
+                                    {/* Follow-up Button - Disabled for non-owners */}
                                     <Button 
                                       size="sm" 
                                       variant="outline" 
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
+                                        if (canEdit) {
                                         openFollowUpDialog(enquiry);
+                                        } else {
+                                          toast({
+                                            title: "Action Restricted",
+                                            description: "You can only set follow-ups for your own enquiries.",
+                                            variant: "destructive",
+                                          });
+                                        }
                                       }}
-                                      title="Set Follow-up"
+                                      title={canEdit ? "Set Follow-up" : "You can only set follow-ups for your own enquiries"}
                                       data-testid={`button-follow-up-${enquiry.id}`}
                                       className="hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700"
+                                      disabled={!canEdit}
                                     >
                                       <Calendar className="w-4 h-4" />
                                     </Button>
@@ -766,7 +822,7 @@ export default function Enquiries() {
                               pageNum = totalPages - 6 + i;
                             } else {
                               pageNum = currentPage - 3 + i;
-                            }
+                        }
                             
                             return (
                               <PaginationItem key={pageNum}>

@@ -582,8 +582,13 @@ export function registerEnquiryRoutes(app: Express) {
       }
       const enquiry = await storage.reopenEnquiry(req.params.id, reason || "", notes || "", userId);
       res.json(enquiry);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to reopen enquiry" });
+    } catch (error: any) {
+      console.error("Reopen enquiry error:", error);
+      const statusCode = error.message?.includes('not found') ? 404 : 
+                        error.message?.includes('Cannot reopen') ? 400 : 500;
+      res.status(statusCode).json({ 
+        message: error.message || "Failed to reopen enquiry" 
+      });
     }
   });
 

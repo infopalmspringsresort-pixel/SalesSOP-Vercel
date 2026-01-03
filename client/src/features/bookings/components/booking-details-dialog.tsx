@@ -18,6 +18,8 @@ import { getStatusColor, getStatusLabel, bookingUpdateOptions } from "@/lib/stat
 import { format } from "date-fns";
 import EnquirySessionManagement from "@/components/ui/enquiry-session-management";
 import { z } from "zod";
+import { useAuth } from "@/hooks/useAuth";
+import { canEditResource } from "@/utils/permissions";
 interface BookingDetailsDialogProps {
   booking: any | null;
   open: boolean;
@@ -36,6 +38,7 @@ const DAY_SESSION_ORDER: Record<string, number> = {
 
 export default function BookingDetailsDialog({ booking, open, onOpenChange }: BookingDetailsDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState("");
   const [notes, setNotes] = useState("");
@@ -129,13 +132,40 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
       const responseData = await response.json();
       return { ...responseData, isDelete };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast({
         title: "Success",
         description: data.isDelete ? "Session deleted successfully" : "Sessions updated successfully",
       });
+      
+      // Update local sessions state immediately with the saved data
+      // This ensures the UI shows the changes right away before the refetch completes
+      if (!data.isDelete && variables.updatedSessions) {
+        const updatedSessions = variables.updatedSessions.map((session: any) => ({
+          ...session,
+          id: session.id || Math.random().toString(36).substr(2, 9),
+          sessionDate: session.sessionDate instanceof Date 
+            ? session.sessionDate 
+            : new Date(session.sessionDate)
+        }));
+        setSessions(updatedSessions);
+      }
+      
       queryClient.invalidateQueries({ queryKey: [`/api/bookings/${booking?.id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/bookings');
+        }
+      });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ queryKey: [`/api/bookings/${booking?.id}`] });
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/bookings');
+        }
+      });
       setIsEditingSessions(false);
       setEditingSessionId(null);
       setEditingSessionData(null);
@@ -183,8 +213,21 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/bookings');
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/bookings');
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ['/api/dashboard/metrics'] });
       setShowStatusChange(false);
       setNewStatus('');
       setNotes('');
@@ -335,31 +378,41 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
                   <Badge variant="secondary" className="px-3 py-1">
                     Status: {booking.status === 'closed' ? 'Closed' : 'Cancelled'}
                   </Badge>
-                ) : !booking.statusChanged ? (
-                  <Button 
-                    variant="outline"
-                    className="flex items-center justify-center gap-2 w-full sm:w-auto" 
-                    data-testid="button-change-status"
-                    onClick={() => setShowStatusChange(true)}
-                    size="sm"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span className="hidden sm:inline">Change Status</span>
-                    <span className="sm:hidden">Status</span>
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="outline"
-                    className="flex items-center justify-center gap-2 w-full sm:w-auto" 
-                    data-testid="button-request-reopen"
-                    onClick={() => setShowReopenRequest(true)}
-                    size="sm"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span className="hidden sm:inline">Request Reopen</span>
-                    <span className="sm:hidden">Reopen</span>
-                  </Button>
-                )}
+                ) : !booking.statusChanged ? (() => {
+                  const canEdit = canEditResource(user as any, booking);
+                  return (
+                    <Button 
+                      variant="outline"
+                      className="flex items-center justify-center gap-2 w-full sm:w-auto" 
+                      data-testid="button-change-status"
+                      onClick={() => setShowStatusChange(true)}
+                      size="sm"
+                      disabled={!canEdit}
+                      title={!canEdit ? "You can only edit your own bookings" : ""}
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span className="hidden sm:inline">Change Status</span>
+                      <span className="sm:hidden">Status</span>
+                    </Button>
+                  );
+                })() : (() => {
+                  const canEdit = canEditResource(user as any, booking);
+                  return (
+                    <Button 
+                      variant="outline"
+                      className="flex items-center justify-center gap-2 w-full sm:w-auto" 
+                      data-testid="button-request-reopen"
+                      onClick={() => setShowReopenRequest(true)}
+                      size="sm"
+                      disabled={!canEdit}
+                      title={!canEdit ? "You can only edit your own bookings" : ""}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span className="hidden sm:inline">Request Reopen</span>
+                      <span className="sm:hidden">Reopen</span>
+                    </Button>
+                  );
+                })()}
               </div>
             </div>
 
@@ -513,32 +566,38 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const newSessionId = Math.random().toString(36).substr(2, 9);
-                    const newSession = {
-                      id: newSessionId,
-                      sessionName: "",
-                      sessionLabel: "",
-                      venue: "",
-                      startTime: "",
-                      endTime: "",
-                      sessionDate: booking?.eventDate ? new Date(booking.eventDate) : new Date(),
-                      paxCount: 0,
-                      specialInstructions: "",
-                    };
-                    setEditingSessionData(newSession);
-                    setEditingSessionId(newSessionId);
-                    setIsNewSession(true);
-                    setIsEditingSessions(true);
-                  }}
-                  className="flex items-center gap-2"
-                  disabled={!!editingSessionId}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Session
-                </Button>
+                {(() => {
+                  const canEdit = canEditResource(user as any, booking);
+                  return (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const newSessionId = Math.random().toString(36).substr(2, 9);
+                        const newSession = {
+                          id: newSessionId,
+                          sessionName: "",
+                          sessionLabel: "",
+                          venue: "",
+                          startTime: "",
+                          endTime: "",
+                          sessionDate: booking?.eventDate ? new Date(booking.eventDate) : new Date(),
+                          paxCount: 0,
+                          specialInstructions: "",
+                        };
+                        setEditingSessionData(newSession);
+                        setEditingSessionId(newSessionId);
+                        setIsNewSession(true);
+                        setIsEditingSessions(true);
+                      }}
+                      className="flex items-center gap-2"
+                      disabled={!!editingSessionId || !canEdit}
+                      title={!canEdit ? "You can only edit sessions for your own bookings" : ""}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Session
+                    </Button>
+                  );
+                })()}
               </div>
             </div>
 
@@ -593,7 +652,41 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
                       
                       return sortedGroups.map(({ key, displayDate, sessions: groupSessions }) => {
                         const normalizedDate = new Date(`${key}T00:00:00`);
-                        const dayNumber = eventStartMidnight
+                        
+                        // Check if this date is within the event date range
+                        const isWithinEventDates = (() => {
+                          if (!booking.eventDate) return false;
+                          
+                          // First check if eventDates array exists (most accurate)
+                          if (booking.eventDates && Array.isArray(booking.eventDates) && booking.eventDates.length > 0) {
+                            const eventDateStrings = booking.eventDates.map((d: any) => {
+                              const date = new Date(d);
+                              return date.toISOString().split('T')[0];
+                            });
+                            const sessionDateStr = normalizedDate.toISOString().split('T')[0];
+                            return eventDateStrings.includes(sessionDateStr);
+                          }
+                          
+                          // Fallback to eventDate and eventEndDate range
+                          const eventStart = new Date(booking.eventDate);
+                          eventStart.setHours(0, 0, 0, 0);
+                          
+                          if (booking.eventEndDate) {
+                            const eventEnd = new Date(booking.eventEndDate);
+                            eventEnd.setHours(23, 59, 59, 999);
+                            return normalizedDate >= eventStart && normalizedDate <= eventEnd;
+                          } else {
+                            // Single day event
+                            const eventDateOnly = new Date(eventStart);
+                            eventDateOnly.setHours(0, 0, 0, 0);
+                            const sessionDateOnly = new Date(normalizedDate);
+                            sessionDateOnly.setHours(0, 0, 0, 0);
+                            return eventDateOnly.getTime() === sessionDateOnly.getTime();
+                          }
+                        })();
+                        
+                        // Only calculate day number if within event dates
+                        const dayNumber = (eventStartMidnight && isWithinEventDates)
                           ? Math.floor((normalizedDate.getTime() - eventStartMidnight.getTime()) / DAY_IN_MS) + 1
                           : undefined;
                         
@@ -890,61 +983,67 @@ export default function BookingDetailsDialog({ booking, open, onOpenChange }: Bo
                                         </div>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          if (sessionId) {
-                                            // Initialize editing state with current session data
-                                            const sessionToEdit = sessions.find((s) => {
-                                              const sId = s.id || (s as any)._id;
-                                              return sId === sessionId;
-                                            });
-                                            if (sessionToEdit) {
-                                              setEditingSessionData({ ...sessionToEdit });
-                                            }
-                                            setEditingSessionId(sessionId);
-                                            setIsNewSession(false);
-                                            setIsEditingSessions(true);
-                                            isEditingRef.current = true;
-                                          }
-                                        }}
-                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                        title="Edit this session"
-                                      >
-                                        <Edit className="w-4 h-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                          // Filter out the session being deleted
-                                          const updatedSessions = sessions.filter((existing) => {
-                                            const existingId = existing.id || (existing as any)._id || "";
-                                            return existingId !== sessionId;
-                                          });
-                                          
-                                          // Also clear editing state if we're deleting the session being edited
-                                          if (editingSessionId === sessionId) {
-                                            setEditingSessionId(null);
-                                            setEditingSessionData(null);
-                                            setIsNewSession(false);
-                                            setIsEditingSessions(false);
-                                          }
-                                          
-                                          // Delete the session
-                                          updateSessionsMutation.mutate({ updatedSessions, isDelete: true });
-                                        }}
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                        title="Delete session"
-                                        disabled={updateSessionsMutation.isPending}
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </div>
+                                    {(() => {
+                                      const canEdit = canEditResource(user as any, booking);
+                                      return (
+                                        <div className="flex items-center gap-2">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              if (sessionId) {
+                                                // Initialize editing state with current session data
+                                                const sessionToEdit = sessions.find((s) => {
+                                                  const sId = s.id || (s as any)._id;
+                                                  return sId === sessionId;
+                                                });
+                                                if (sessionToEdit) {
+                                                  setEditingSessionData({ ...sessionToEdit });
+                                                }
+                                                setEditingSessionId(sessionId);
+                                                setIsNewSession(false);
+                                                setIsEditingSessions(true);
+                                                isEditingRef.current = true;
+                                              }
+                                            }}
+                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                            title={canEdit ? "Edit this session" : "You can only edit sessions for your own bookings"}
+                                            disabled={!canEdit}
+                                          >
+                                            <Edit className="w-4 h-4" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              // Filter out the session being deleted
+                                              const updatedSessions = sessions.filter((existing) => {
+                                                const existingId = existing.id || (existing as any)._id || "";
+                                                return existingId !== sessionId;
+                                              });
+                                              
+                                              // Also clear editing state if we're deleting the session being edited
+                                              if (editingSessionId === sessionId) {
+                                                setEditingSessionId(null);
+                                                setEditingSessionData(null);
+                                                setIsNewSession(false);
+                                                setIsEditingSessions(false);
+                                              }
+                                              
+                                              // Delete the session
+                                              updateSessionsMutation.mutate({ updatedSessions, isDelete: true });
+                                            }}
+                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            title={canEdit ? "Delete session" : "You can only delete sessions for your own bookings"}
+                                            disabled={updateSessionsMutation.isPending || !canEdit}
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </CardContent>
                               </Card>

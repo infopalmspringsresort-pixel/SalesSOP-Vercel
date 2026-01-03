@@ -101,6 +101,7 @@ export const bookingSchema = z.object({
   _id: z.instanceof(ObjectId).optional(),
   bookingNumber: z.string(),
   enquiryId: z.instanceof(ObjectId),
+  enquiryNumber: z.string().nullable().optional(), // Store enquiry number for quick access
   clientName: z.string(),
   contactNumber: z.string(),
   email: z.string().email().nullable().optional(),

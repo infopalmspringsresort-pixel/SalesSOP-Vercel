@@ -179,10 +179,29 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
         title: "Success",
         description: "Booking created successfully",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      // Invalidate and refetch all booking-related queries (including paginated ones)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/bookings');
+        }
+      });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
       queryClient.invalidateQueries({ queryKey: [`/api/enquiries/${enquiryId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && (key.startsWith('/api/bookings') || key.startsWith('/api/enquiries'));
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
       form.reset();
       setEventDuration(1);
       setEventDates([]);
@@ -339,6 +358,8 @@ export default function BookingForm({ open, onOpenChange, enquiryId }: BookingFo
           startTime: session.startTime || "",
           endTime: session.endTime || "",
           sessionDate: session.sessionDate ? (session.sessionDate instanceof Date ? session.sessionDate : new Date(session.sessionDate)) : (enquiry.eventDate ? new Date(enquiry.eventDate) : new Date()),
+          // Preserve original session ID from enquiry for read-only tracking
+          _originalId: session.id || session._id,
           paxCount: typeof session.paxCount === 'number' ? session.paxCount : (session.paxCount ? parseInt(session.paxCount) || 0 : 0),
           specialInstructions: session.specialInstructions || "",
         }));

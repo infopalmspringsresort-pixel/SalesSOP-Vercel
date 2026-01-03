@@ -5,6 +5,7 @@ import { loadUserPermissions, requirePermission, requireAdmin } from "../../midd
 import { insertUserSchema } from "@shared/schema-client";
 import { z } from "zod";
 import bcryptjs from "bcryptjs";
+import { sessionCleanup } from "../../utils/sessionCleanup";
 
 export function registerSettingsRoutes(app: Express) {
   // Role management routes - simplified for testing
@@ -249,7 +250,22 @@ export function registerSettingsRoutes(app: Express) {
       // Update user password
       const updatedUser = await storage.updateUser(userId, { passwordHash });
       
-      res.json({ message: 'Password reset successfully', user: updatedUser });
+      // Invalidate all sessions for this user to force logout
+      try {
+        await sessionCleanup.invalidateUserSessions(userId);
+      } catch (error) {
+        console.error('Error invalidating sessions:', error);
+        // Continue even if session invalidation fails
+      }
+      
+      // Check if the password is being changed for the currently logged-in user
+      const isCurrentUser = req.user.id === userId;
+      
+      res.json({ 
+        message: 'Password reset successfully', 
+        user: updatedUser,
+        requiresLogout: isCurrentUser // Indicate if current user needs to logout
+      });
     } catch (error) {
       res.status(500).json({ message: "Failed to reset password" });
     }
@@ -267,7 +283,7 @@ export function registerSettingsRoutes(app: Express) {
       }
 
       // Get filters from query parameters (optional)
-      const { dateFrom, dateTo, eventType } = req.query;
+      const { dateFrom, dateTo, eventType, city, source } = req.query;
       
       // Get all enquiries (customer data)
       const enquiries = await storage.getEnquiries();
@@ -293,6 +309,24 @@ export function registerSettingsRoutes(app: Express) {
         });
         const afterCount = filteredEnquiries.length;
         console.log(`Event type filter "${eventTypeStr}": ${beforeCount} -> ${afterCount} enquiries`);
+      }
+
+      // Filter by city if provided
+      const cityStr = typeof city === 'string' ? city : Array.isArray(city) ? (city[0] as string) : '';
+      if (cityStr && cityStr !== 'all') {
+        filteredEnquiries = filteredEnquiries.filter(enquiry => {
+          const enquiryCity = ((enquiry as any).city || '').trim();
+          return enquiryCity.toLowerCase() === cityStr.toLowerCase();
+        });
+      }
+
+      // Filter by source if provided
+      const sourceStr = typeof source === 'string' ? source : Array.isArray(source) ? (source[0] as string) : '';
+      if (sourceStr && sourceStr !== 'all') {
+        filteredEnquiries = filteredEnquiries.filter(enquiry => {
+          const enquirySource = (enquiry.source || '').trim();
+          return enquirySource.toLowerCase() === sourceStr.toLowerCase();
+        });
       }
       
       // Format customer data
@@ -325,7 +359,9 @@ export function registerSettingsRoutes(app: Express) {
         data: customerData,
         count: customerData.length,
         dateRange: dateFrom && dateTo ? { from: dateFrom, to: dateTo } : null,
-        eventType: eventTypeStr && eventTypeStr !== 'all' ? eventTypeStr : null
+        eventType: eventTypeStr && eventTypeStr !== 'all' ? eventTypeStr : null,
+        city: cityStr && cityStr !== 'all' ? cityStr : null,
+        source: sourceStr && sourceStr !== 'all' ? sourceStr : null
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to export customer data" });

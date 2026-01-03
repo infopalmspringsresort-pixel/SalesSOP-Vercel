@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,12 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState("users");
   const [showCreateUserPassword, setShowCreateUserPassword] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({
-    from: subDays(new Date(), 30),
-    to: new Date(),
+    from: undefined as Date | undefined,
+    to: undefined as Date | undefined,
   });
   const [exportEventType, setExportEventType] = useState("all");
+  const [exportCity, setExportCity] = useState("all");
+  const [exportSource, setExportSource] = useState("all");
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -75,6 +77,17 @@ export function SettingsPage() {
   const { data: enquiries = [] } = useQuery<any[]>({
     queryKey: ["/api/enquiries"],
   });
+
+  // Get unique cities from enquiries for city filter
+  const uniqueCities = useMemo(() => {
+    const cities = new Set<string>();
+    enquiries.forEach((enquiry: any) => {
+      if (enquiry.city && enquiry.city.trim()) {
+        cities.add(enquiry.city.trim());
+      }
+    });
+    return Array.from(cities).sort();
+  }, [enquiries]);
 
   // Form setup
   const form = useForm<UserFormData>({
@@ -168,10 +181,22 @@ export function SettingsPage() {
       if (!response.ok) throw new Error("Failed to reset password");
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: "Password reset successfully" });
+    onSuccess: (data) => {
+      const isCurrentUser = currentUser && typeof currentUser === 'object' && 'id' in currentUser && currentUser.id === passwordResetDialog.userId;
+      
+      toast({ 
+        title: "Password reset successfully",
+        description: isCurrentUser ? "Your password has been changed. Please log in again with your new password." : "User password has been reset. The user will need to log in again."
+      });
       setPasswordResetDialog({ open: false, userId: "", userName: "" });
       setNewPassword("");
+      
+      // If password was changed for current user, force logout
+      if (isCurrentUser || data.requiresLogout) {
+        setTimeout(() => {
+          window.location.href = '/api/logout';
+        }, 2000);
+      }
     },
     onError: () => {
       toast({ title: "Failed to reset password", variant: "destructive" });
@@ -193,6 +218,12 @@ export function SettingsPage() {
       if (exportEventType && exportEventType !== 'all') {
         params.append('eventType', exportEventType);
       }
+      if (exportCity && exportCity !== 'all') {
+        params.append('city', exportCity);
+      }
+      if (exportSource && exportSource !== 'all') {
+        params.append('source', exportSource);
+      }
 
       const response = await fetch(`/api/export/customers?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch customer data');
@@ -212,11 +243,19 @@ export function SettingsPage() {
           if (exportEventType && exportEventType !== 'all') {
             filename += `_${exportEventType}`;
           }
+          if (exportCity && exportCity !== 'all') {
+            filename += `_${exportCity.replace(/\s+/g, '-').toLowerCase()}`;
+          }
+          if (exportSource && exportSource !== 'all') {
+            filename += `_${exportSource.replace(/\s+/g, '-').toLowerCase()}`;
+          }
           filename += '.xlsx';
 
           exportCustomersToExcel(result.data, filename, {
             dateRange: result.dateRange,
             eventType: exportEventType !== 'all' ? exportEventType : undefined,
+            city: exportCity !== 'all' ? exportCity : undefined,
+            source: exportSource !== 'all' ? exportSource : undefined,
             totalRecords: result.count
           });
           toast({
@@ -694,7 +733,7 @@ export function SettingsPage() {
               Customer Data Export
             </CardTitle>
             <CardDescription>
-              Export customer information to Excel format with optional date and event type filtering
+              Export customer information to Excel format with optional filtering by date range, event type, city, and source
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -734,13 +773,63 @@ export function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div>
+                <Label htmlFor="city" className="text-sm font-medium">
+                  City (Optional)
+                </Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Filter by specific city
+                </p>
+                <Select value={exportCity} onValueChange={setExportCity}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Cities</SelectItem>
+                    {uniqueCities.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               
-              <div className="flex items-end space-x-2">
+              <div>
+                <Label htmlFor="source" className="text-sm font-medium">
+                  Source (Optional)
+                </Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Filter by enquiry source
+                </p>
+                <Select value={exportSource} onValueChange={setExportSource}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="Walk-in">Walk-in</SelectItem>
+                    <SelectItem value="Phone Call">Phone Call</SelectItem>
+                    <SelectItem value="Website / Online Form">Website / Online Form</SelectItem>
+                    <SelectItem value="WhatsApp / Social Media">WhatsApp / Social Media</SelectItem>
+                    <SelectItem value="Travel Agent / Broker">Travel Agent / Broker</SelectItem>
+                    <SelectItem value="Corporate">Corporate</SelectItem>
+                    <SelectItem value="Event Planner">Event Planner</SelectItem>
+                    <SelectItem value="Referral (Past Client / Staff)">Referral (Past Client / Staff)</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="flex items-end space-x-2 md:col-span-2">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setExportDateRange({ from: undefined, to: undefined });
                     setExportEventType("all");
+                    setExportCity("all");
+                    setExportSource("all");
                   }}
                   disabled={isExporting}
                   className="flex-1"

@@ -139,6 +139,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
+      // Invalidate all sessions for this user to force logout
+      try {
+        const { sessionCleanup } = await import("./utils/sessionCleanup");
+        await sessionCleanup.invalidateUserSessions(tokenData.userId);
+      } catch (error) {
+        console.error('Error invalidating sessions:', error);
+        // Continue even if session invalidation fails
+      }
+
       res.json({ message: "Password has been reset successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to reset password" });

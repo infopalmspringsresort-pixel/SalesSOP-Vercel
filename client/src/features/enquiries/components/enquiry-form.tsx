@@ -16,7 +16,8 @@ import { insertEnquirySchema, insertEnquirySessionSchema } from "@shared/schema-
 import { z } from "zod";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, X } from "lucide-react";
+import { canEditResource } from "@/utils/permissions";
+import { Plus, X, AlertCircle } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import EnquirySessionManagement from "@/components/ui/enquiry-session-management";
 import { CityInputAutocomplete } from "@/components/ui/city-autocomplete";
@@ -117,6 +118,9 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  
+  // Check if user can edit this enquiry (only relevant when editing, not creating)
+  const canEdit = !editingEnquiry || canEditResource(user as any, editingEnquiry);
 
   const initialEventDate = formatDateInput(editingEnquiry?.eventDate);
   const initialEventEndDate = formatDateInput(editingEnquiry?.eventEndDate);
@@ -232,8 +236,22 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
         title: "Success",
         description: editingEnquiry?.id ? "Enquiry updated successfully" : "Enquiry created successfully",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      // Invalidate and refetch all enquiry-related queries (including paginated ones)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      // Force immediate refetch to update UI
+      queryClient.refetchQueries({ 
+        predicate: (query) => {
+          const key = Array.isArray(query.queryKey) ? query.queryKey[0] : query.queryKey;
+          return typeof key === 'string' && key.startsWith('/api/enquiries');
+        }
+      });
+      queryClient.refetchQueries({ queryKey: ["/api/dashboard/metrics"] });
       form.reset();
       setTentativeDates([]);
       onOpenChange(false);
@@ -569,6 +587,24 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
               </DialogDescription>
             </div>
           </div>
+          {editingEnquiry?.reopenReason && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-amber-900">This enquiry was reopened</div>
+                  <div className="text-xs text-amber-700 mt-1">
+                    <span className="font-medium">Reason:</span> {editingEnquiry.reopenReason.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </div>
+                  {editingEnquiry.reopenReasonNotes && (
+                    <div className="text-xs text-amber-700 mt-1">
+                      <span className="font-medium">Notes:</span> {editingEnquiry.reopenReasonNotes}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </DialogHeader>
 
         <Form {...form}>
@@ -788,18 +824,54 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
                             <Input
                               id="custom-event-duration"
                               type="number"
-                              min={4}
+                              min={1}
                               max={30}
+                              step={1}
                               value={customDuration}
                               onChange={(e) => {
-                                const raw = parseInt(e.target.value, 10);
-                                const sanitized = Number.isFinite(raw) ? Math.min(Math.max(raw, 4), 30) : 4;
+                                const inputValue = e.target.value.trim();
+                                
+                                // Allow empty string while typing
+                                if (inputValue === '' || inputValue === '-') {
+                                  return;
+                                }
+                                
+                                // Parse as integer
+                                const parsed = parseInt(inputValue, 10);
+                                
+                                // Only accept valid positive integers
+                                if (Number.isNaN(parsed)) {
+                                  return; // Invalid input, don't update
+                                }
+                                
+                                // Ensure positive value (at least 1)
+                                if (parsed < 1) {
+                                  return; // Negative or zero, don't update
+                                }
+                                
+                                // Clamp to valid range (1-30)
+                                const sanitized = Math.min(Math.max(parsed, 1), 30);
                                 setCustomDuration(sanitized);
                                 field.onChange(sanitized);
                               }}
+                              onBlur={(e) => {
+                                // Ensure valid value on blur
+                                const value = parseInt(e.target.value, 10);
+                                if (Number.isNaN(value) || value < 1) {
+                                  const finalValue = 4; // Default to 4 for multi-day events
+                                  setCustomDuration(finalValue);
+                                  field.onChange(finalValue);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                // Prevent negative sign, 'e', 'E', '+', '.' from being entered
+                                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '.') {
+                                  e.preventDefault();
+                                }
+                              }}
                             />
                             <p className="text-xs text-muted-foreground">
-                              Enter 4 or more days for larger events.
+                              Enter a positive number.
                             </p>
                           </div>
                         )}
@@ -1142,13 +1214,22 @@ export default function EnquiryForm({ open, onOpenChange, editingEnquiry, prefil
               </Button>
               <Button 
                 type="submit"
-                disabled={saveEnquiryMutation.isPending}
+                disabled={saveEnquiryMutation.isPending || !canEdit}
                 data-testid="button-save-enquiry"
                 className="w-full sm:w-auto"
                 onClick={() => {
+                  if (!canEdit) {
+                    toast({
+                      title: "Action Restricted",
+                      description: "You can only edit your own enquiries.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
                   // Manually trigger form submission
                   form.handleSubmit(onSubmit)();
                 }}
+                title={!canEdit && editingEnquiry ? "You can only edit your own enquiries" : ""}
               >
                 {saveEnquiryMutation.isPending ? "Saving..." : editingEnquiry ? "Update Enquiry" : "Save Enquiry"}
               </Button>

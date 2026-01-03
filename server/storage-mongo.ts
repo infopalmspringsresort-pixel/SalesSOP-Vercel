@@ -1052,9 +1052,20 @@ export class MongoStorage implements IStorage {
     
     const collection = await getCollection<Booking>('bookings');
     const bookingNumber = await this.getNextBookingNumber();
+    
+    // Fetch enquiry to get enquiryNumber if enquiryId is provided
+    let enquiryNumber: string | null = null;
+    if (booking.enquiryId && booking.enquiryId.trim() !== '') {
+      const enquiry = await this.getEnquiryById(booking.enquiryId);
+      if (enquiry && enquiry.enquiryNumber) {
+        enquiryNumber = enquiry.enquiryNumber;
+      }
+    }
+    
     const doc = {
       ...booking,
       bookingNumber,
+      enquiryNumber, // Store enquiryNumber directly in booking
       // Only set enquiryId if it's provided and valid (not empty string)
       enquiryId: booking.enquiryId && booking.enquiryId.trim() !== '' 
         ? this.toObjectId(booking.enquiryId) 
@@ -1300,6 +1311,8 @@ export class MongoStorage implements IStorage {
           ...this.toApiFormat(booking),
           // Ensure enquiryId is converted to string for API consistency
           enquiryId: booking.enquiryId ? (booking.enquiryId.toString ? booking.enquiryId.toString() : String(booking.enquiryId)) : booking.enquiryId,
+          // Include enquiryNumber at top level for easy access
+          enquiryNumber: (booking as any).enquiryNumber || (enquiry ? enquiry.enquiryNumber : null),
           enquiry: enquiry ? {
             id: enquiry._id.toString(),
             enquiryNumber: enquiry.enquiryNumber,
@@ -1354,6 +1367,8 @@ export class MongoStorage implements IStorage {
 
     return {
       ...this.toApiFormat(booking),
+      // Include enquiryNumber at top level for easy access
+      enquiryNumber: (booking as any).enquiryNumber || (enquiry ? enquiry.enquiryNumber : null),
       enquiry: enquiry ? {
         id: enquiry._id.toString(),
         enquiryNumber: enquiry.enquiryNumber,
@@ -1381,9 +1396,9 @@ export class MongoStorage implements IStorage {
     const db = await getMongoDb();
     const now = new Date();
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
     
-    const counterId = `bookings:${year}-${month}`;
+    // Use yearly counter instead of monthly
+    const counterId = `bookings:${year}`;
     const result = await db.collection('counters').findOneAndUpdate(
       { _id: counterId },
       { $inc: { seq: 1 } },
@@ -1391,7 +1406,7 @@ export class MongoStorage implements IStorage {
     );
     
     const nextNumber = result.seq || 1;
-    return `BKG-${year}-${month}-${String(nextNumber).padStart(3, '0')}`;
+    return `BKG-${year}-${String(nextNumber).padStart(3, '0')}`;
   }
 
   // BEO operations
@@ -2054,8 +2069,50 @@ export class MongoStorage implements IStorage {
   }
 
   async reopenEnquiry(enquiryId: string, reason: string, notes: string, userId: string): Promise<Enquiry> {
-    // TODO: Implement enquiry reopening
-    throw new Error('reopenEnquiry not implemented yet');
+    const enquiriesCollection = await getCollection<Enquiry>('enquiries');
+    const statusHistoryCollection = await getCollection<EnquiryStatusHistory>('enquiry_status_history');
+    
+    // Get current enquiry
+    const currentEnquiry = await enquiriesCollection.findOne({ _id: this.toObjectId(enquiryId) });
+    if (!currentEnquiry) {
+      throw new Error('Enquiry not found');
+    }
+    
+    // Only allow reopening if status is 'lost'
+    if (currentEnquiry.status !== 'lost') {
+      throw new Error(`Cannot reopen enquiry with status '${currentEnquiry.status}'. Only 'lost' enquiries can be reopened.`);
+    }
+    
+    // Create status history entry for the reopen action
+    await statusHistoryCollection.insertOne({
+      enquiryId: this.toObjectId(enquiryId),
+      fromStatus: 'lost',
+      toStatus: 'ongoing',
+      changedById: this.toObjectId(userId),
+      notes: notes || `Reopened: ${reason}`,
+      followUpDate: null,
+      createdAt: new Date(),
+    });
+    
+    // Update the enquiry: change status to 'ongoing', store reopen reason and notes
+    const result = await enquiriesCollection.findOneAndUpdate(
+      { _id: this.toObjectId(enquiryId) },
+      { 
+        $set: { 
+          status: 'ongoing',
+          reopenReason: reason || null,
+          reopenReasonNotes: notes || null,
+          updatedAt: new Date() 
+        } 
+      },
+      { returnDocument: 'after' }
+    );
+    
+    if (!result) {
+      throw new Error('Failed to update enquiry');
+    }
+    
+    return this.toApiFormat(result);
   }
 
   async createBookingAuditLog(auditLog: any): Promise<any> {

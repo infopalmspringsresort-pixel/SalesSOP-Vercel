@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ interface SessionManagementProps {
   eventStartDate: string;
   eventEndDate?: string;
   eventDuration: number;
+  readOnlySessions?: string[]; // Array of session IDs that should be read-only
+  hideAddButton?: boolean; // Hide add button if true
 }
 
 const ALL_DAY_LABEL = "All Day";
@@ -47,7 +49,9 @@ export default function SessionManagement({
   onSessionsChange, 
   eventStartDate, 
   eventEndDate, 
-  eventDuration 
+  eventDuration,
+  readOnlySessions = [],
+  hideAddButton = false
 }: SessionManagementProps) {
   const { data: existingBookings = [] } = useQuery<BookingWithRelations[]>({
     queryKey: ["/api/bookings"],
@@ -58,6 +62,7 @@ export default function SessionManagement({
     () => venues.map((venue) => venue.name),
     [venues]
   );
+
 
   // Helper function to calculate duration between two times
   const calculateDuration = (startTime: string, endTime: string): string => {
@@ -118,6 +123,30 @@ export default function SessionManagement({
     
     return dates;
   }, [eventStartDate, eventDuration]);
+
+  // Track which sessions are using custom dates (not from event dates)
+  const [customDateSessions, setCustomDateSessions] = useState<Set<string>>(new Set());
+
+  // Auto-detect sessions with dates outside event dates and mark them as custom
+  useEffect(() => {
+    if (parsedEventDates.length === 0) return;
+    
+    const eventDateValues = new Set(parsedEventDates.map(d => d.value));
+    setCustomDateSessions(prev => {
+      const newSet = new Set(prev);
+      sessions.forEach(session => {
+        if (!session.sessionDate) return;
+        const sessionDateStr = typeof session.sessionDate === 'string' 
+          ? session.sessionDate 
+          : new Date(session.sessionDate).toISOString().split('T')[0];
+        
+        if (!eventDateValues.has(sessionDateStr)) {
+          newSet.add(session.id);
+        }
+      });
+      return newSet;
+    });
+  }, [sessions, parsedEventDates]);
 
   // Check for conflicts with existing bookings
   const checkSessionConflict = (session: Session): string[] => {
@@ -251,16 +280,18 @@ export default function SessionManagement({
             Sessions define the specific venue, date, and time for your event. The session date will automatically match your event date.
           </p>
         </div>
-        <Button 
-          type="button" 
-          variant="outline" 
-          size="sm" 
-          onClick={addSession}
-          data-testid="add-session"
-        >
-          <Plus className="w-4 h-4 mr-1" />
-          Add Session
-        </Button>
+        {!hideAddButton && (
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="sm" 
+            onClick={addSession}
+            data-testid="add-session"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add Session
+          </Button>
+        )}
       </div>
 
       {sessions.length === 0 && (
@@ -278,24 +309,29 @@ export default function SessionManagement({
           const isAllDaySession = session.sessionLabel === ALL_DAY_LABEL;
           const validationErrors = validateSession(session);
           const hasErrors = conflicts.length > 0 || validationErrors.length > 0;
+          const isReadOnly = readOnlySessions.includes(session.id);
+          const isCustomDate = customDateSessions.has(session.id);
 
           return (
-            <Card key={session.id} className={`${hasErrors ? 'border-red-500' : ''}`}>
+            <Card key={session.id} className={`${hasErrors ? 'border-red-500' : ''} ${isReadOnly ? 'bg-muted/30' : ''}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-medium">
                     Session {index + 1}
                     {session.sessionLabel && ` - ${session.sessionLabel}`}
+                    {isReadOnly && <Badge variant="outline" className="ml-2 text-xs">From Enquiry</Badge>}
                   </CardTitle>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeSession(session.id)}
-                    data-testid={`remove-session-${index}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
+                  {!isReadOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeSession(session.id)}
+                      data-testid={`remove-session-${index}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -310,6 +346,8 @@ export default function SessionManagement({
                       placeholder="Enter session title (e.g., Welcome Ceremony)"
                       data-testid={`session-name-${index}`}
                       className={!session.sessionName?.trim() ? 'border-red-500' : ''}
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                     />
                     {!session.sessionName?.trim() && (
                       <p className="text-sm text-red-500">Session name is required</p>
@@ -319,29 +357,34 @@ export default function SessionManagement({
                   {/* Day Session */}
                   <div className="space-y-2">
                     <Label htmlFor={`daySession-${session.id}`}>Day Session *</Label>
-                    <Select
-                      value={session.sessionLabel || ""}
-                      onValueChange={(value) => {
-                        // Update sessionLabel
-                        const updatedSessions = sessions.map(s => {
-                          if (s.id === session.id) {
-                            const updated = { ...s, sessionLabel: value };
-                            // If selecting All Day, set default times
-                            if (value === ALL_DAY_LABEL) {
-                              updated.startTime = "00:00";
-                              updated.endTime = "23:59";
-                            } else if (s.sessionLabel === ALL_DAY_LABEL) {
-                              // Clear times when switching from All Day
-                              updated.startTime = "";
-                              updated.endTime = "";
+                    {isReadOnly ? (
+                      <div className="px-3 py-2 bg-muted border rounded-md text-sm font-medium">
+                        {session.sessionLabel || "Not specified"}
+                      </div>
+                    ) : (
+                      <Select
+                        value={session.sessionLabel || ""}
+                        onValueChange={(value) => {
+                          // Update sessionLabel
+                          const updatedSessions = sessions.map(s => {
+                            if (s.id === session.id) {
+                              const updated = { ...s, sessionLabel: value };
+                              // If selecting All Day, set default times
+                              if (value === ALL_DAY_LABEL) {
+                                updated.startTime = "00:00";
+                                updated.endTime = "23:59";
+                              } else if (s.sessionLabel === ALL_DAY_LABEL) {
+                                // Clear times when switching from All Day
+                                updated.startTime = "";
+                                updated.endTime = "";
+                              }
+                              return updated;
                             }
-                            return updated;
-                          }
-                          return s;
-                        });
-                        onSessionsChange(updatedSessions);
-                      }}
-                    >
+                            return s;
+                          });
+                          onSessionsChange(updatedSessions);
+                        }}
+                      >
                       <SelectTrigger 
                         id={`daySession-${session.id}`} 
                         className="w-full"
@@ -359,83 +402,160 @@ export default function SessionManagement({
                           </SelectItem>
                         ))}
                       </SelectContent>
-                    </Select>
+                      </Select>
+                    )}
                   </div>
 
                   {/* Venue */}
                   <div className="space-y-2">
                     <Label htmlFor={`venue-${session.id}`}>Venue *</Label>
-                    <Select
-                      value={session.venue}
-                      onValueChange={(value) => updateSession(session.id, "venue", value)}
-                      disabled={venuesLoading || venuesError}
-                    >
-                      <SelectTrigger 
-                        data-testid={`session-venue-${index}`}
-                        className={!session.venue?.trim() ? 'border-red-500' : ''}
-                      >
-                        <SelectValue placeholder="Select venue" />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        {venueOptions.length === 0 ? (
-                          <SelectItem disabled value="no-venues">
-                            {venuesLoading
-                              ? "Loading venues..."
-                              : venuesError
-                                ? "Failed to load venues"
-                                : "No venues available"}
-                          </SelectItem>
-                        ) : (
-                          venueOptions.map((venue) => (
-                            <SelectItem key={venue} value={venue}>
-                              {venue}
-                            </SelectItem>
-                          ))
+                    {isReadOnly ? (
+                      <div className="px-3 py-2 bg-muted border rounded-md text-sm font-medium">
+                        {session.venue || "Not specified"}
+                      </div>
+                    ) : (
+                      <>
+                        <Select
+                          value={session.venue}
+                          onValueChange={(value) => updateSession(session.id, "venue", value)}
+                          disabled={venuesLoading || venuesError}
+                        >
+                          <SelectTrigger 
+                            data-testid={`session-venue-${index}`}
+                            className={!session.venue?.trim() ? 'border-red-500' : ''}
+                          >
+                            <SelectValue placeholder="Select venue" />
+                          </SelectTrigger>
+                          <SelectContent position="popper">
+                            {venueOptions.length === 0 ? (
+                              <SelectItem disabled value="no-venues">
+                                {venuesLoading
+                                  ? "Loading venues..."
+                                  : venuesError
+                                    ? "Failed to load venues"
+                                    : "No venues available"}
+                              </SelectItem>
+                            ) : (
+                              venueOptions.map((venue) => (
+                                <SelectItem key={venue} value={venue}>
+                                  {venue}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {!session.venue?.trim() && (
+                          <p className="text-sm text-red-500">Venue is required</p>
                         )}
-                      </SelectContent>
-                    </Select>
-                    {!session.venue?.trim() && (
-                      <p className="text-sm text-red-500">Venue is required</p>
+                      </>
                     )}
                   </div>
 
                   {/* Session Date */}
                   <div className="space-y-2">
                     <Label htmlFor={`sessionDate-${session.id}`}>Session Date *</Label>
-                    {parsedEventDates.length > 0 ? (
+                    {isReadOnly ? (
+                      <div className="px-3 py-2 bg-muted border rounded-md text-sm font-medium">
+                        {isCustomDate 
+                          ? new Date(session.sessionDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
+                          : parsedEventDates.find(d => d.value === session.sessionDate)?.label || session.sessionDate
+                        }
+                        {isCustomDate && <Badge variant="outline" className="ml-2 text-xs">Custom Date</Badge>}
+                      </div>
+                    ) : parsedEventDates.length > 0 ? (
                       <>
-                        <Select
-                          value={session.sessionDate || ""}
-                          onValueChange={(value) => updateSession(session.id, 'sessionDate', value)}
-                        >
-                          <SelectTrigger id={`sessionDate-${session.id}`}>
-                            <SelectValue placeholder="Select session date" />
-                          </SelectTrigger>
-                          <SelectContent position="popper">
-                            {parsedEventDates.map((dateOption, index) => (
-                              <SelectItem key={dateOption.value} value={dateOption.value}>
-                                Day {index + 1} • {dateOption.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({eventDuration} {eventDuration > 1 ? "days" : "day"})
-                        </p>
+                        {isCustomDate ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                id={`sessionDate-${session.id}`}
+                                type="date"
+                                value={session.sessionDate || ""}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    updateSession(session.id, 'sessionDate', e.target.value);
+                                  }
+                                }}
+                                className="flex-1 font-medium"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setCustomDateSessions(prev => {
+                                    const newSet = new Set(prev);
+                                    newSet.delete(session.id);
+                                    return newSet;
+                                  });
+                                  if (parsedEventDates.length > 0) {
+                                    updateSession(session.id, 'sessionDate', parsedEventDates[0].value);
+                                  }
+                                }}
+                              >
+                                Use Event Date
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              📅 Custom date selected. You can change it above or switch back to event dates.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <Select
+                              value={session.sessionDate || ""}
+                              onValueChange={(value) => {
+                                if (value === "custom") {
+                                  setCustomDateSessions(prev => new Set(prev).add(session.id));
+                                  const currentDate = session.sessionDate ? new Date(session.sessionDate) : null;
+                                  if (!currentDate || isNaN(currentDate.getTime())) {
+                                    updateSession(session.id, 'sessionDate', new Date().toISOString().split('T')[0]);
+                                  }
+                                } else {
+                                  setCustomDateSessions(prev => {
+                                    const newSet = new Set(prev);
+                                    newSet.delete(session.id);
+                                    return newSet;
+                                  });
+                                  updateSession(session.id, 'sessionDate', value);
+                                }
+                              }}
+                            >
+                              <SelectTrigger id={`sessionDate-${session.id}`}>
+                                <SelectValue placeholder="Select session date" />
+                              </SelectTrigger>
+                              <SelectContent position="popper">
+                                {parsedEventDates.map((dateOption, index) => (
+                                  <SelectItem key={dateOption.value} value={dateOption.value}>
+                                    Day {index + 1} • {dateOption.label}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="custom">
+                                  📅 Custom Date
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              📅 Event runs from {parsedEventDates[0]?.label} to {parsedEventDates[parsedEventDates.length - 1]?.label} ({eventDuration} {eventDuration > 1 ? "days" : "day"})
+                            </p>
+                          </>
+                        )}
                       </>
                     ) : (
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                        <Input
-                          id={`sessionDate-${session.id}`}
-                          type="date"
-                          value={session.sessionDate || ""}
-                          onChange={(e) => updateSession(session.id, 'sessionDate', e.target.value)}
-                          min={eventStartDate}
-                          max={eventEndDate}
-                          className="pl-10 font-medium"
-                        />
-                      </div>
+                      <Input
+                        id={`sessionDate-${session.id}`}
+                        type="date"
+                        value={session.sessionDate || ""}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            updateSession(session.id, 'sessionDate', e.target.value);
+                          }
+                        }}
+                        min={eventStartDate}
+                        max={eventEndDate}
+                        disabled={isReadOnly}
+                        className="font-medium"
+                      />
                     )}
                   </div>
                 </div>
@@ -445,12 +565,18 @@ export default function SessionManagement({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor={`startTime-${session.id}`}>Start Time *</Label>
-                      <TimePicker
-                        id={`startTime-${session.id}`}
-                        value={session.startTime || ""}
-                        onChange={(value) => updateSession(session.id, 'startTime', value)}
-                        className={!session.startTime ? 'border-red-500' : ''}
-                      />
+                      {isReadOnly ? (
+                        <div className="px-3 py-2 bg-muted border rounded-md text-sm font-medium">
+                          {session.startTime || "Not specified"}
+                        </div>
+                      ) : (
+                        <TimePicker
+                          id={`startTime-${session.id}`}
+                          value={session.startTime || ""}
+                          onChange={(value) => updateSession(session.id, 'startTime', value)}
+                          className={!session.startTime ? 'border-red-500' : ''}
+                        />
+                      )}
                       {!session.startTime && (
                         <p className="text-sm text-red-500">Start time is required</p>
                       )}
@@ -458,12 +584,18 @@ export default function SessionManagement({
 
                     <div className="space-y-2">
                       <Label htmlFor={`endTime-${session.id}`}>End Time *</Label>
-                      <TimePicker
-                        id={`endTime-${session.id}`}
-                        value={session.endTime || ""}
-                        onChange={(value) => updateSession(session.id, 'endTime', value)}
-                        className={!session.endTime ? 'border-red-500' : ''}
-                      />
+                      {isReadOnly ? (
+                        <div className="px-3 py-2 bg-muted border rounded-md text-sm font-medium">
+                          {session.endTime || "Not specified"}
+                        </div>
+                      ) : (
+                        <TimePicker
+                          id={`endTime-${session.id}`}
+                          value={session.endTime || ""}
+                          onChange={(value) => updateSession(session.id, 'endTime', value)}
+                          className={!session.endTime ? 'border-red-500' : ''}
+                        />
+                      )}
                       {!session.endTime && (
                         <p className="text-sm text-red-500">End time is required</p>
                       )}
@@ -487,13 +619,19 @@ export default function SessionManagement({
                 {/* Special Instructions */}
                 <div className="space-y-2">
                   <Label htmlFor={`specialInstructions-${session.id}`}>Special Instructions</Label>
-                  <Input
-                    id={`specialInstructions-${session.id}`}
-                    value={session.specialInstructions || ''}
-                    onChange={(e) => updateSession(session.id, 'specialInstructions', e.target.value)}
-                    placeholder="Any special requirements or notes"
-                    data-testid={`session-instructions-${index}`}
-                  />
+                  {isReadOnly ? (
+                    <div className="px-3 py-2 bg-muted border rounded-md text-sm min-h-[42px]">
+                      {session.specialInstructions || "None"}
+                    </div>
+                  ) : (
+                    <Input
+                      id={`specialInstructions-${session.id}`}
+                      value={session.specialInstructions || ''}
+                      onChange={(e) => updateSession(session.id, 'specialInstructions', e.target.value)}
+                      placeholder="Any special requirements or notes"
+                      data-testid={`session-instructions-${index}`}
+                    />
+                  )}
                 </div>
 
                 {/* Error Messages */}

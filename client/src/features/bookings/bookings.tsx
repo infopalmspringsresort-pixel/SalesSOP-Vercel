@@ -76,31 +76,8 @@ export default function Bookings() {
 
   // Function to handle booking row click
   const handleBookingClick = (booking: any) => {
-    const userRole = user?.role?.name || user?.role;
-    const userId = user?.id || user?._id;
-    const isOwner = booking.salespersonId === userId || booking.salesperson?.id === userId;
-    
-    // Permission rules:
-    // Staff: Cannot open any booking modal
-    // Admin: Can open any booking modal
-    // Manager/Salesperson: Can open only their own bookings
-    if (userRole === 'staff') {
-      toast({
-        title: "Access Restricted",
-        description: "Staff users cannot view booking details.",
-        variant: "destructive",
-      });
-      return;
-    } else if ((userRole === 'manager' || userRole === 'salesperson') && !isOwner) {
-      toast({
-        title: "Access Restricted",
-        description: "You can only view details of bookings you own.",
-        variant: "destructive",
-      });
-      return;
-    }
-    // Admin can access all bookings (no restriction needed)
-    
+    // Allow all authenticated users to view booking details
+    // Actions will be restricted in the details dialog
     setSelectedBooking(booking);
     setShowBookingDetails(true);
   };
